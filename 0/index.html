@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project 0: Becoming Friends with the Camera | Chris Song</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --bg-secondary: #111827;
+            --card-bg: rgba(17, 24, 39, 0.75);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-hover-border: rgba(59, 130, 246, 0.5);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-primary: #3b82f6;
+            --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);
+            --glow: rgba(59, 130, 246, 0.15);
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        [data-theme="light"] {
+            --bg: #f8fafc;
+            --bg-secondary: #ffffff;
+            --card-bg: rgba(255, 255, 255, 0.9);
+            --card-border: rgba(0, 0, 0, 0.08);
+            --card-hover-border: rgba(59, 130, 246, 0.6);
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --accent-primary: #2563eb;
+            --glow: rgba(37, 99, 235, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .bg-glow {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100vw;
+            height: 100vh;
+            background: 
+                radial-gradient(circle at 20% 15%, rgba(59, 130, 246, 0.12) 0%, transparent 40%),
+                radial-gradient(circle at 80% 25%, rgba(139, 92, 246, 0.1) 0%, transparent 40%),
+                radial-gradient(circle at 50% 80%, rgba(236, 72, 153, 0.06) 0%, transparent 45%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Navigation Header */
+        header {
+            position: sticky;
+            top: 0;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            background: rgba(11, 15, 25, 0.7);
+            border-bottom: 1px solid var(--card-border);
+            z-index: 100;
+            transition: var(--transition);
+        }
+
+        [data-theme="light"] header {
+            background: rgba(248, 250, 252, 0.8);
+        }
+
+        .nav-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 70px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.92rem;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .back-link:hover {
+            color: var(--accent-primary);
+            transform: translateX(-2px);
+        }
+
+        .theme-toggle-btn {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 9999px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .theme-toggle-btn:hover {
+            border-color: var(--accent-primary);
+            transform: translateY(-1px);
+        }
+
+        /* Project Header */
+        .project-hero {
+            padding: 50px 0 30px 0;
+        }
+
+        .project-tag {
+            display: inline-block;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent-primary);
+            margin-bottom: 10px;
+        }
+
+        .project-hero h1 {
+            font-size: clamp(2rem, 4vw, 2.8rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+            margin-bottom: 12px;
+        }
+
+        .project-author {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        /* Section Styling */
+        .section-block {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 36px;
+            margin: 32px 0 60px 0;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 24px;
+            color: var(--text-primary);
+        }
+
+        /* Seamless Side-by-Side Image Pair (Zero Gap) */
+        .seamless-image-container {
+            display: flex;
+            width: 100%;
+            gap: 0;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--card-border);
+            background: #000;
+        }
+
+        .image-wrapper {
+            flex: 1 1 50%;
+            width: 50%;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .image-wrapper img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            margin: 0;
+            padding: 0;
+            object-fit: cover;
+            border: none;
+        }
+
+        /* Part 3 Single Media Container */
+        .media-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            overflow: hidden;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--card-border);
+            background: #000;
+        }
+
+        .media-display {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            border-radius: var(--radius-md);
+        }
+
+        /* Captions */
+        .caption-row {
+            display: flex;
+            width: 100%;
+            margin-top: 14px;
+            gap: 0;
+        }
+
+        .caption-col {
+            flex: 1 1 50%;
+            width: 50%;
+            text-align: center;
+            font-size: 0.92rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .caption-single {
+            text-align: center;
+            font-size: 0.92rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-top: 14px;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--card-border);
+            padding: 36px 0;
+            margin-top: 60px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.86rem;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 12px;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .footer-links a:hover {
+            color: var(--text-primary);
+        }
+
+        @media (max-width: 640px) {
+            .section-block {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-glow"></div>
+
+    <!-- Navigation Header -->
+    <header>
+        <div class="container nav-inner">
+            <a href="../index.html" class="back-link">
+                <span>←</span>
+                <span>Back to Portfolio</span>
+            </a>
+            <button class="theme-toggle-btn" id="theme-toggle" aria-label="Toggle color theme">
+                <span id="theme-icon">☀️</span>
+                <span id="theme-text">Theme</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Project Hero -->
+        <div class="project-hero">
+            <span class="project-tag">CS180 · Computational Photography</span>
+            <h1>Project 0: Becoming Friends with the Camera</h1>
+            <p class="project-author">Chris Song · UC Berkeley</p>
+        </div>
+
+        <!-- Part 1 Section -->
+        <section class="section-block" id="part1">
+            <h2 class="section-title">Part 1</h2>
+
+            <!-- Side-by-Side Images with No Gap -->
+            <div class="seamless-image-container">
+                <div class="image-wrapper">
+                    <img src="./pt1_close.png" 
+                         alt="pt1_close" 
+                         onerror="if (!this.dataset.tried) { this.dataset.tried = 'media'; this.src = './media/pt1_close.png'; } else if (this.dataset.tried === 'media') { this.dataset.tried = 'jpg'; this.src = './pt1_close.jpg'; } else if (this.dataset.tried === 'jpg') { this.dataset.tried = 'media_jpg'; this.src = './media/pt1_close.jpg'; }">
+                </div>
+                <div class="image-wrapper">
+                    <img src="./pt1_far_edit.png" 
+                         alt="pt1_far_edit" 
+                         onerror="if (!this.dataset.tried) { this.dataset.tried = 'media'; this.src = './media/pt1_far_edit.png'; } else if (this.dataset.tried === 'media') { this.dataset.tried = 'jpg'; this.src = './pt1_far_edit.jpg'; } else if (this.dataset.tried === 'jpg') { this.dataset.tried = 'media_jpg'; this.src = './media/pt1_far_edit.jpg'; }">
+                </div>
+            </div>
+            <div class="caption-row">
+                <div class="caption-col">distorted selfie</div>
+                <div class="caption-col">distanced with zoom</div>
+            </div>
+        </section>
+
+        <!-- Part 2 Section -->
+        <section class="section-block" id="part2">
+            <h2 class="section-title">Part 2</h2>
+
+            <!-- Side-by-Side Images with No Gap -->
+            <div class="seamless-image-container">
+                <div class="image-wrapper">
+                    <img src="./pt2_zoom.png" 
+                         alt="pt2_zoom" 
+                         onerror="if (!this.dataset.tried) { this.dataset.tried = 'media'; this.src = './media/pt2_zoom.png'; } else if (this.dataset.tried === 'media') { this.dataset.tried = 'jpg'; this.src = './pt2_zoom.jpg'; } else if (this.dataset.tried === 'jpg') { this.dataset.tried = 'media_jpg'; this.src = './media/pt2_zoom.jpg'; }">
+                </div>
+                <div class="image-wrapper">
+                    <img src="./pt2_close.png" 
+                         alt="pt2_close" 
+                         onerror="if (!this.dataset.tried) { this.dataset.tried = 'media'; this.src = './media/pt2_close.png'; } else if (this.dataset.tried === 'media') { this.dataset.tried = 'jpg'; this.src = './pt2_close.jpg'; } else if (this.dataset.tried === 'jpg') { this.dataset.tried = 'media_jpg'; this.src = './media/pt2_close.jpg'; }">
+                </div>
+            </div>
+            <div class="caption-row">
+                <div class="caption-col">zoomed in, flat</div>
+                <div class="caption-col">close up, 3-dimensional</div>
+            </div>
+        </section>
+
+        <!-- Part 3 Section -->
+        <section class="section-block" id="part3">
+            <h2 class="section-title">Part 3</h2>
+            <div class="media-container">
+                <img src="./pt3.gif" 
+                     alt="Part 3 Dolly Zoom" 
+                     class="media-display"
+                     onerror="if (!this.dataset.tried) { this.dataset.tried = 'media'; this.src = './media/pt3.gif'; } else if (this.dataset.tried === 'media') { this.dataset.tried = 'png'; this.src = './pt3.png'; } else if (this.dataset.tried === 'png') { this.dataset.tried = 'media_png'; this.src = './media/pt3.png'; }">
+            </div>
+            <div class="caption-single">the dolly zoom</div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-links">
+                <a href="../index.html">Home</a>
+                <a href="https://github.com/ChrisSong214" target="_blank" rel="noopener noreferrer">GitHub</a>
+            </div>
+            <p>&copy; <span id="current-year"></span> Chris Song · UC Berkeley</p>
+        </div>
+    </footer>
+
+    <!-- Theme Switcher Script -->
+    <script>
+        document.getElementById('current-year').textContent = new Date().getFullYear();
+
+        const themeBtn = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const themeText = document.getElementById('theme-text');
+
+        const storedTheme = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        
+        if (storedTheme === 'light' || (!storedTheme && !prefersDark)) {
+            document.documentElement.setAttribute('data-theme', 'light');
+            themeIcon.textContent = '🌙';
+            themeText.textContent = 'Dark';
+        } else {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            themeIcon.textContent = '☀️';
+            themeText.textContent = 'Light';
+        }
+
+        themeBtn.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            if (currentTheme === 'light') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+                themeIcon.textContent = '☀️';
+                themeText.textContent = 'Light';
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+                localStorage.setItem('theme', 'light');
+                themeIcon.textContent = '🌙';
+                themeText.textContent = 'Dark';
+            }
+        });
+    </script>
+</body>
+</html>
