@@ -1,0 +1,1835 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project 1: Images of the Russian Empire | Chris Song</title>
+    <meta name="description"
+        content="CS180 Project 1: Colorizing the Prokudin-Gorskii photo collection using single-scale and multi-scale image pyramids with NCC and L2 metrics.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --bg-secondary: #111827;
+            --card-bg: rgba(17, 24, 39, 0.78);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-hover-border: rgba(59, 130, 246, 0.5);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-primary: #3b82f6;
+            --accent-secondary: #8b5cf6;
+            --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);
+            --glow: rgba(59, 130, 246, 0.15);
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        [data-theme="light"] {
+            --bg: #f8fafc;
+            --bg-secondary: #ffffff;
+            --card-bg: rgba(255, 255, 255, 0.92);
+            --card-border: rgba(0, 0, 0, 0.08);
+            --card-hover-border: rgba(59, 130, 246, 0.6);
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --accent-primary: #2563eb;
+            --accent-secondary: #7c3aed;
+            --glow: rgba(37, 99, 235, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-primary);
+            line-height: 1.65;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .bg-glow {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100vw;
+            height: 100vh;
+            background:
+                radial-gradient(circle at 15% 15%, rgba(59, 130, 246, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 85% 25%, rgba(139, 92, 246, 0.1) 0%, transparent 45%),
+                radial-gradient(circle at 50% 85%, rgba(236, 72, 153, 0.06) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1140px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header / Navbar */
+        header {
+            position: sticky;
+            top: 0;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            background: rgba(11, 15, 25, 0.75);
+            border-bottom: 1px solid var(--card-border);
+            z-index: 100;
+            transition: var(--transition);
+        }
+
+        [data-theme="light"] header {
+            background: rgba(248, 250, 252, 0.85);
+        }
+
+        .nav-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 70px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.92rem;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .back-link:hover {
+            color: var(--accent-primary);
+            transform: translateX(-2px);
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .theme-toggle-btn {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-primary);
+            padding: 8px 14px;
+            border-radius: 9999px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .theme-toggle-btn:hover {
+            border-color: var(--accent-primary);
+            transform: translateY(-1px);
+        }
+
+        /* Hero */
+        .project-hero {
+            padding: 48px 0 24px 0;
+        }
+
+        .badge-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 9999px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-primary {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            color: #93c5fd;
+        }
+
+        [data-theme="light"] .badge-primary {
+            color: #1d4ed8;
+            background: rgba(37, 99, 235, 0.1);
+        }
+
+        .badge-accent {
+            background: rgba(139, 92, 246, 0.15);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            color: #c4b5fd;
+        }
+
+        [data-theme="light"] .badge-accent {
+            color: #6d28d9;
+            background: rgba(109, 40, 217, 0.1);
+        }
+
+        .project-hero h1 {
+            font-size: clamp(2rem, 4.2vw, 2.9rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+            margin-bottom: 12px;
+        }
+
+        .gradient-text {
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: inline-block;
+        }
+
+        .project-subtitle {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 880px;
+            margin-bottom: 14px;
+        }
+
+        .project-meta {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .project-meta span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* TOC Pills */
+        .toc-bar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 28px 0 10px 0;
+            padding: 12px 16px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+        }
+
+        .toc-link {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+
+        .toc-link:hover {
+            color: var(--text-primary);
+            background: rgba(59, 130, 246, 0.12);
+        }
+
+        /* Section Blocks */
+        .section-block {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 36px;
+            margin: 32px 0 44px 0;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .section-title {
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-desc {
+            font-size: 1.02rem;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        h3.sub-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 28px 0 14px 0;
+        }
+
+        p {
+            margin-bottom: 14px;
+            color: var(--text-secondary);
+            font-size: 0.98rem;
+        }
+
+        p strong,
+        li strong {
+            color: var(--text-primary);
+        }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(59, 130, 246, 0.12);
+            color: #93c5fd;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.88em;
+        }
+
+        [data-theme="light"] code {
+            color: #1e40af;
+            background: rgba(30, 64, 175, 0.08);
+        }
+
+        /* Formula Box */
+        .math-box {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--card-border);
+            border-left: 4px solid var(--accent-primary);
+            border-radius: var(--radius-sm);
+            padding: 18px 22px;
+            margin: 18px 0 24px 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.92rem;
+            line-height: 1.6;
+            color: var(--text-primary);
+            overflow-x: auto;
+        }
+
+        [data-theme="light"] .math-box {
+            background: #f1f5f9;
+        }
+
+        .math-title {
+            font-weight: 700;
+            font-family: 'Inter', sans-serif;
+            color: var(--accent-primary);
+            margin-bottom: 6px;
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        /* Callout Box */
+        .callout {
+            border-radius: var(--radius-md);
+            padding: 18px 22px;
+            margin: 20px 0;
+            border: 1px solid var(--card-border);
+            background: rgba(59, 130, 246, 0.07);
+            border-left: 4px solid var(--accent-primary);
+        }
+
+        .callout-warning {
+            background: rgba(234, 179, 8, 0.08);
+            border-left-color: #eab308;
+        }
+
+        .callout-title {
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Grid Galleries */
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 22px;
+            margin: 24px 0;
+        }
+
+        .gallery-grid.three-col {
+            grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+        }
+
+        .gallery-card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: var(--transition);
+        }
+
+        [data-theme="light"] .gallery-card {
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.09);
+        }
+
+        .gallery-card:hover {
+            border-color: var(--card-hover-border);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px var(--glow);
+        }
+
+        .gallery-card-img-wrap {
+            position: relative;
+            background: #000;
+            width: 100%;
+            height: 380px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .gallery-card-img-wrap img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transition: transform 0.3s ease;
+        }
+
+        .gallery-card:hover .gallery-card-img-wrap img {
+            transform: scale(1.02);
+        }
+
+        .img-zoom-hint {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        .gallery-card-img-wrap:hover .img-zoom-hint {
+            opacity: 1;
+        }
+
+        .gallery-card-body {
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex-grow: 1;
+        }
+
+        .gallery-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .gallery-card-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .pill {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            padding: 3px 8px;
+            border-radius: 9999px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .pill-blue {
+            background: rgba(59, 130, 246, 0.15);
+            color: #93c5fd;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .pill-purple {
+            background: rgba(139, 92, 246, 0.15);
+            color: #c4b5fd;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .pill-green {
+            background: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .pill-amber {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fcd34d;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .offset-list {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 8px 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--card-border);
+        }
+
+        [data-theme="light"] .offset-list {
+            background: #f8fafc;
+        }
+
+        .offset-row {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .offset-g {
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .offset-r {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        /* Comparison Side by Side */
+        .comparison-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 20px 0;
+        }
+
+        .comp-item {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        [data-theme="light"] .comp-item {
+            background: #ffffff;
+        }
+
+        .comp-img-wrap {
+            height: 380px;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            overflow: hidden;
+        }
+
+        .comp-img-wrap img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .comp-caption {
+            padding: 12px 16px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: center;
+            border-top: 1px solid var(--card-border);
+            background: rgba(0, 0, 0, 0.15);
+        }
+
+        [data-theme="light"] .comp-caption {
+            background: #f1f5f9;
+        }
+
+        /* Data Tables */
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            margin: 24px 0;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--card-border);
+        }
+
+        table.data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+            text-align: left;
+            background: var(--card-bg);
+        }
+
+        table.data-table th,
+        table.data-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        table.data-table th {
+            background: rgba(59, 130, 246, 0.08);
+            font-weight: 700;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 0.78rem;
+        }
+
+        table.data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        table.data-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        [data-theme="light"] table.data-table tr:hover td {
+            background: rgba(0, 0, 0, 0.02);
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+
+        /* Lightbox Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.92);
+            backdrop-filter: blur(8px);
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal.open {
+            display: flex;
+        }
+
+        .modal-content {
+            max-width: 90vw;
+            max-height: 85vh;
+            border-radius: var(--radius-md);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+            object-fit: contain;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 28px;
+            color: #fff;
+            font-size: 36px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: var(--transition);
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: var(--accent-primary);
+            transform: scale(1.1);
+        }
+
+        .modal-caption {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #f3f4f6;
+            font-size: 1rem;
+            background: rgba(17, 24, 39, 0.85);
+            padding: 8px 20px;
+            border-radius: 9999px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+            max-width: 80%;
+        }
+
+        /* Step workflow list */
+        .step-list {
+            list-style: none;
+            counter-reset: step-counter;
+            margin: 20px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .step-item {
+            position: relative;
+            padding-left: 48px;
+            counter-increment: step-counter;
+        }
+
+        .step-item::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            color: #93c5fd;
+            font-weight: 700;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        [data-theme="light"] .step-item::before {
+            color: #1d4ed8;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--card-border);
+            padding: 40px 0;
+            margin-top: 60px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.88rem;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 12px;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .footer-links a:hover {
+            color: var(--text-primary);
+        }
+
+        @media (max-width: 768px) {
+            .section-block {
+                padding: 24px 18px;
+            }
+
+            .comparison-container {
+                grid-template-columns: 1fr;
+            }
+
+            .gallery-card-img-wrap,
+            .comp-img-wrap {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-glow"></div>
+
+    <!-- Navigation Header -->
+    <header>
+        <div class="container nav-inner">
+            <a href="../index.html" class="back-link">
+                <span>←</span>
+                <span>Back to Portfolio</span>
+            </a>
+            <div class="nav-actions">
+                <button class="theme-toggle-btn" id="theme-toggle" aria-label="Toggle color theme">
+                    <span id="theme-icon">☀️</span>
+                    <span id="theme-text">Theme</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Project Hero -->
+        <div class="project-hero">
+            <div class="badge-row">
+                <span class="badge badge-primary">CS180 · Computer Vision &amp; Computational Photography</span>
+                <span class="badge badge-accent">Programming Project #1</span>
+            </div>
+            <h1>Images of the Russian Empire:<br><span class="gradient-text">Colorizing the Prokudin-Gorskii
+                    Collection</span></h1>
+            <p class="project-subtitle">
+                Automatic reconstruction of 20th-century Russian Empire color photographs from digitized glass plate
+                negatives using exhaustive single-scale search, multi-scale coarse-to-fine Gaussian image pyramids, and
+                multi-spectral edge alignment.
+            </p>
+            <div class="project-meta">
+                <span><strong>Author:</strong> Chris Song</span>
+                <span>•</span>
+                <span><strong>Institution:</strong> UC Berkeley</span>
+                <span>•</span>
+                <span><strong>Course:</strong> CS180 / CS280A (Fall 2026)</span>
+            </div>
+
+            <!-- Quick Table of Contents -->
+            <nav class="toc-bar" aria-label="Table of Contents">
+                <a href="#overview" class="toc-link">1. Overview</a>
+                <a href="#single-scale" class="toc-link">2. Single-Scale Alignment</a>
+                <a href="#pyramid-alignment" class="toc-link">3. Multi-Scale Pyramid</a>
+                <a href="#all-results" class="toc-link">4. Full Results Gallery</a>
+                <a href="#chosen-examples" class="toc-link">5. Additional Examples (LoC)</a>
+                <a href="#failure-analysis" class="toc-link">6. Failure Analysis &amp; Solutions</a>
+                <a href="#displacement-table" class="toc-link">7. Offset &amp; Runtime Table</a>
+            </nav>
+        </div>
+
+        <!-- Section 1: Overview & Historical Background -->
+        <section class="section-block" id="overview">
+            <h2 class="section-title">1. Background &amp; Historical Context</h2>
+            <p class="section-desc">From three monochrome glass exposures to full-color digital restoration.</p>
+
+            <p>
+                Under Tsar Nicholas II, Russian chemist/photographer Sergei Mikhailovich Prokudin-Gorskii (1863-1944)
+                set off on an ambitious project to document the Russian Empire in full color between the years of 1909
+                and 1915. As color printing was not yet widely available, Prokudin-Gorskii utilized a special camera
+                exposing three consecutive monochrome photographs on a single oblong glass plate in rapid succession,
+                passing the light through Blue, Green, and Red filters.
+            </p>
+            <p>
+                In 1948, the United States Library of Congress acquired these surviving glass plate negatives and
+                subsequently scanned them at ultra-high resolution. As the three exposures were captured sequentially
+                rather than simultaneously, subject movement, mechanical vibration, and minor lens shifts introduced
+                spatial translations between the channels.
+                <strong>The goal of this project</strong> is to implement automatic computational alignment
+                algorithms—progressing from exhaustive single-scale search to recursive coarse-to-fine image pyramids—to
+                composite the digitized glass plates into crisp, artifact-free full-color photographs.
+            </p>
+
+            <div class="callout">
+                <div class="callout-title">⚠️ Channel Ordering Note</div>
+                <p style="margin-bottom:0">
+                    On each glass plate negative, the filters are ordered from top to bottom as Blue, Green, and Red
+                    (i.e. BGR layout). In
+                    this processing pipeline, the Blue channel is kept stationary as the fixed reference frame, while
+                    the Green and Red channels are independently shifted to align with the top frame before compositing
+                    into standard RGB format.
+                </p>
+            </div>
+        </section>
+
+        <!-- Section 2: Single-Scale Alignment -->
+        <section class="section-block" id="single-scale">
+            <h2 class="section-title">2. Single-Scale Alignment Algorithm</h2>
+            <p class="section-desc">Exhaustive search over low-resolution digitized negatives.</p>
+
+            <p>
+                For standard low-resolution scans (~340&times;400 pixels), an exhaustive 2D grid search over a
+                bounded translation window $[-W, W]$ is computationally viable.
+            </p>
+
+            <h3 class="sub-title">Metrics</h3>
+            <p>
+                Given a stationary reference channel $I_{\text{ref}}$ (Blue) and a candidate channel $I_{\text{target}}$
+                (Green or Red) displaced by $\mathbf{d} = (dx, dy)$, two standard vision metrics are used to evaluate
+                spatial alignment quality:
+            </p>
+
+            <div class="math-box">
+                <div class="math-title">Normalized Cross-Correlation (NCC) — Higher is Preferable</div>
+                $$\text{NCC}(u, v) = \frac{\sum_{\mathbf{x}} \left(u(\mathbf{x}) - \mu_u\right) \left(v(\mathbf{x} +
+                \mathbf{d}) - \mu_v\right)}{\sqrt{\sum_{\mathbf{x}} \left(u(\mathbf{x}) - \mu_u\right)^2} \cdot
+                \sqrt{\sum_{\mathbf{x}} \left(v(\mathbf{x} + \mathbf{d}) - \mu_v\right)^2}}$$
+            </div>
+
+            <div class="math-box">
+                <div class="math-title">Sum of Squared Differences (SSD / L2 Norm) — Lower is Preferable</div>
+                $$\text{SSD}(u, v) = \sum_{\mathbf{x}} \left[ u(\mathbf{x}) - v(\mathbf{x} + \mathbf{d}) \right]^2$$
+            </div>
+
+            <h3 class="sub-title">Implementation Nuances &amp; Border Cropping</h3>
+            <ol class="step-list">
+                <li class="step-item">
+                    <strong>Intensity Normalization:</strong> Raw 8-bit and 16-bit negative scans converted to
+                    single-precision floating point arrays normalized in $[0.0, 1.0]$.
+                </li>
+                <li class="step-item">
+                    <strong>Circular Shift with Boundary Clipping:</strong> Image translation performed efficiently
+                    using <code>np.roll</code> across vertical and horizontal axes.
+                </li>
+                <li class="step-item">
+                    <strong>Border Margin Exclusion:</strong> Outermost 15% of pixels along all four borders
+                    excluded when calculating error: digitized plate borders contain black unexposed frames,
+                    bright glass scanner borders, and roll-wrap artifacts that severely corrupt the correlation score.
+                </li>
+                <li class="step-item">
+                    <strong>Search Window:</strong> Exhaustive search across $dx \in [-15, +15]$ and $dy \in [-15,
+                    +15]$, testing $(31 \times 31) = 961$ candidate displacement vectors per channel.
+                </li>
+            </ol>
+
+            <h3 class="sub-title">Results on Benchmark Low-Resolution Images</h3>
+            <p>
+                Both NCC and L2 converge on identical, clean alignments with zero visible color fringing:
+            </p>
+
+            <div class="gallery-grid three-col">
+                <!-- Cathedral -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/cathedral_aligned.jpg', 'Cathedral of the Nativity of the Theotokos (cathedral.jpg) | Single-Scale Aligned')">
+                        <img src="./outputs/ncc/cathedral_aligned.jpg" alt="Cathedral aligned" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">cathedral.jpg</span>
+                            <span class="pill pill-blue">Low-Res</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row">
+                                <span class="offset-g">Green (dx, dy):</span>
+                                <span class="mono">(2, 5)</span>
+                            </div>
+                            <div class="offset-row">
+                                <span class="offset-r">Red (dx, dy):</span>
+                                <span class="mono">(3, 12)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Monastery -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/monastery_aligned.jpg', 'Monastery of St. Nil Stolbensky (monastery.jpg) | Single-Scale Aligned')">
+                        <img src="./outputs/ncc/monastery_aligned.jpg" alt="Monastery aligned" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">monastery.jpg</span>
+                            <span class="pill pill-blue">Low-Res</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row">
+                                <span class="offset-g">Green (dx, dy):</span>
+                                <span class="mono">(2, -3)</span>
+                            </div>
+                            <div class="offset-row">
+                                <span class="offset-r">Red (dx, dy):</span>
+                                <span class="mono">(2, 3)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tobolsk -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/tobolsk_aligned.jpg', 'Tobolsk Kremlin & River Irtysh (tobolsk.jpg) | Single-Scale Aligned')">
+                        <img src="./outputs/ncc/tobolsk_aligned.jpg" alt="Tobolsk aligned" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">tobolsk.jpg</span>
+                            <span class="pill pill-blue">Low-Res</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row">
+                                <span class="offset-g">Green (dx, dy):</span>
+                                <span class="mono">(3, 3)</span>
+                            </div>
+                            <div class="offset-row">
+                                <span class="offset-r">Red (dx, dy):</span>
+                                <span class="mono">(3, 6)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 3: Multi-Scale Pyramid Alignment -->
+        <section class="section-block" id="pyramid-alignment">
+            <h2 class="section-title">3. Multi-Scale Coarse-to-Fine Image Pyramid</h2>
+            <p class="section-desc">Scaling to high-resolution multi-megapixel TIFF files with sub-2-second efficiency.
+            </p>
+
+            <h3 class="sub-title">The Computational Bottleneck</h3>
+            <p>
+                The high-resolution scans provided in the LoC collection are large uncompressed TIFFs measuring
+                approximately $3300 \times 3800$ pixels.
+                As channel displacements scale proportionally with resolution, high-resolution plates exhibit
+                offsets exceeding $100\text{-}180$ pixels (e.g. Red channel in <code>melons.tif</code> requires $dy =
+                178$).
+            </p>
+            <p>
+                An exhaustive single-scale search over a displacement window $[-180, 180]$ would require $(361 \times
+                361) \approx 130,321$ evaluations per channel. At 12 megapixels per evaluation, processing a
+                single image would take over 15 to 20 minutes on modern hardware.
+            </p>
+
+            <h3 class="sub-title">Recursive Coarse-to-Fine Gaussian Pyramid Solution</h3>
+            <p>
+                Constructing a multi-scale representation by recursively downsampling the input images by a factor of 2
+                using a 5&times;5 Gaussian blur filter (via <code>cv2.pyrDown</code>):
+            </p>
+            <ol class="step-list">
+                <li class="step-item">
+                    <strong>Coarsest Base Case:</strong> When the image dimensions fall below a threshold ($\le 128$
+                    pixels), an initial exhaustive search is performed over a moderate window $[-15, 15]$ covering an
+                    effective search radius of $\pm 480$ full-resolution pixels, as the image is downsampled by a factor
+                    of 32.
+                </li>
+                <li class="step-item">
+                    <strong>Displacement Propagation:</strong> the estimated displacement vector is multiplied by 2 when
+                    ascending back down from level $k+1$ to finer level $k$:
+                    $$\mathbf{d}_{k}^{\text{initial}} = 2 \times \mathbf{d}_{k+1}^{\text{coarse}}$$
+                </li>
+                <li class="step-item">
+                    <strong>Local Refinement:</strong> At the current scale, a compact local search window of only $[-2,
+                    +2]$ pixels is centered around the predicted displacement $\mathbf{d}_{k}^{\text{initial}}$, which
+                    evaluates just $(5 \times 5) = 25$ candidate translations, rapidly adjusting for any rounding
+                    errors.
+                </li>
+            </ol>
+
+            <div class="callout">
+                <div class="callout-title">Algorithmic Complexity Comparison</div>
+                <p style="margin-bottom:0">
+                    While exhaustive single-scale search scales quadratically with maximum shift $O(S^2 \cdot W \cdot
+                    H)$, the multi-scale pyramid evaluates only $O(L \cdot r^2)$ candidates across $L$ pyramid levels
+                    with radius $r=2$. This reduces total processing time from over 1,200 seconds down to ~1.8
+                    seconds per TIFF, nearly 600x faster.
+                </p>
+            </div>
+        </section>
+
+        <!-- Section 4: Full Results Gallery (All 14 Images) -->
+        <section class="section-block" id="all-results">
+            <h2 class="section-title">4. Comprehensive Results Gallery (All 14 Provided Images)</h2>
+            <p class="section-desc">
+                High-resolution aligned outputs across all 14 assignment images.
+            </p>
+
+            <div class="gallery-grid" id="gallery-container">
+                <!-- 1. Cathedral -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/cathedral_aligned.jpg', 'Cathedral of the Nativity of the Theotokos (cathedral.jpg)')">
+                        <img src="./outputs/ncc/cathedral_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/cathedral_aligned.jpg" data-l2="./outputs/l2/cathedral_aligned.jpg"
+                            alt="Cathedral" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">cathedral.jpg</span>
+                            <span class="pill pill-blue">Single-Scale</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(2,
+                                    5)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(3,
+                                    12)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Monastery -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/monastery_aligned.jpg', 'Monastery of St. Nil Stolbensky (monastery.jpg)')">
+                        <img src="./outputs/ncc/monastery_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/monastery_aligned.jpg" data-l2="./outputs/l2/monastery_aligned.jpg"
+                            alt="Monastery" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">monastery.jpg</span>
+                            <span class="pill pill-blue">Single-Scale</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(2,
+                                    -3)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(2,
+                                    3)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Tobolsk -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/tobolsk_aligned.jpg', 'Tobolsk Kremlin (tobolsk.jpg)')">
+                        <img src="./outputs/ncc/tobolsk_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/tobolsk_aligned.jpg" data-l2="./outputs/l2/tobolsk_aligned.jpg"
+                            alt="Tobolsk" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">tobolsk.jpg</span>
+                            <span class="pill pill-blue">Single-Scale</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(3,
+                                    3)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(3,
+                                    6)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Church -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/church_aligned.jpg', 'Church of the Resurrection (church.tif)')">
+                        <img src="./outputs/ncc/church_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/church_aligned.jpg" data-l2="./outputs/l2/church_aligned.jpg"
+                            alt="Church" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">church.tif</span>
+                            <span class="pill pill-purple">Pyramid</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono"
+                                    id="church-g">(4, 25)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono"
+                                    id="church-r">(-4, 58)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. Emir -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/emir_aligned.jpg', 'Emir of Bukhara (emir.tif) | Aligned via Sobel Edge Features')">
+                        <img src="./outputs/ncc/emir_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/emir_aligned.jpg" data-l2="./outputs/l2/emir_aligned.jpg"
+                            alt="Emir of Bukhara" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">emir.tif</span>
+                            <span class="pill pill-green">Edge Gradient</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(24,
+                                    49)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(40,
+                                    107)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 6. Harvesters -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/harvesters_aligned.jpg', 'Harvesters in the Field (harvesters.tif)')">
+                        <img src="./outputs/ncc/harvesters_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/harvesters_aligned.jpg"
+                            data-l2="./outputs/l2/harvesters_aligned.jpg" alt="Harvesters" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">harvesters.tif</span>
+                            <span class="pill pill-purple">Pyramid</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(17,
+                                    60)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(14,
+                                    124)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 7. Icon -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/icon_aligned.jpg', 'Icon of St. Dmitry (icon.tif)')">
+                        <img src="./outputs/ncc/icon_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/icon_aligned.jpg" data-l2="./outputs/l2/icon_aligned.jpg" alt="Icon"
+                            loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">icon.tif</span>
+                            <span class="pill pill-purple">Pyramid</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(17,
+                                    41)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(23,
+                                    89)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 8. Ilemselga -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/ilemselga_aligned.jpg', 'Village of Ilemselga (ilemselga.tif)')">
+                        <img src="./outputs/ncc/ilemselga_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/ilemselga_aligned.jpg" data-l2="./outputs/l2/ilemselga_aligned.jpg"
+                            alt="Ilemselga" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">ilemselga.tif</span>
+                            <span class="pill pill-purple">Pyramid</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(7,
+                                    40)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(11,
+                                    130)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 9. Melons -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/melons_aligned.jpg', 'Melon Vendor (melons.tif)')">
+                        <img src="./outputs/ncc/melons_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/melons_aligned.jpg" data-l2="./outputs/l2/melons_aligned.jpg"
+                            alt="Melons" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">melons.tif</span>
+                            <span class="pill pill-purple">Pyramid</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(10,
+                                    81)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(14,
+                                    178)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 10. Religious Painting -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/religous_painting_aligned.jpg', 'Religious Painting (religous_painting.tif)')">
+                        <img src="./outputs/ncc/religous_painting_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/religous_painting_aligned.jpg"
+                            data-l2="./outputs/l2/religous_painting_aligned.jpg" alt="Religious Painting"
+                            loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">religous_painting.tif</span>
+                            <span class="pill pill-purple">Pyramid</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(3,
+                                    28)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(7,
+                                    68)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 11. Self Portrait -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/self_portrait_aligned.jpg', 'Self Portrait of Prokudin-Gorskii (self_portrait.tif)')">
+                        <img src="./outputs/ncc/self_portrait_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/self_portrait_aligned.jpg"
+                            data-l2="./outputs/l2/self_portrait_aligned.jpg" alt="Self Portrait" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">self_portrait.tif</span>
+                            <span class="pill pill-purple">Pyramid</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(29,
+                                    79)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(37,
+                                    176)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 12. Siren -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/siren_aligned.jpg', 'Siren Sculpture (siren.tif)')">
+                        <img src="./outputs/ncc/siren_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/siren_aligned.jpg" data-l2="./outputs/l2/siren_aligned.jpg"
+                            alt="Siren" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">siren.tif</span>
+                            <span class="pill pill-purple">Pyramid</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(-6,
+                                    49)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(-25,
+                                    96)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 13. Three Generations -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/three_generations_aligned.jpg', 'Three Generations of a Zlatoust Family (three_generations.tif)')">
+                        <img src="./outputs/ncc/three_generations_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/three_generations_aligned.jpg"
+                            data-l2="./outputs/l2/three_generations_aligned.jpg" alt="Three Generations" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">three_generations.tif</span>
+                            <span class="pill pill-purple">Pyramid</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(14,
+                                    52)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(11,
+                                    111)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 14. Wharf -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/wharf_aligned.jpg', 'Wharf on the Oka River (wharf.tif)')">
+                        <img src="./outputs/ncc/wharf_aligned.jpg" class="metric-img"
+                            data-ncc="./outputs/ncc/wharf_aligned.jpg" data-l2="./outputs/l2/wharf_aligned.jpg"
+                            alt="Wharf" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">wharf.tif</span>
+                            <span class="pill pill-purple">Pyramid</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(-7,
+                                    15)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(-16,
+                                    82)</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 5: Additional Examples from Library of Congress -->
+        <section class="section-block" id="chosen-examples">
+            <h2 class="section-title">5. Additional Examples from the Library of Congress</h2>
+            <p class="section-desc">
+                Three curated photographs downloaded from the official Library of Congress Prokudin-Gorskii archive,
+                demonstrating algorithm robustness across botanical, industrial, and portrait subjects.
+            </p>
+
+            <div class="gallery-grid three-col">
+                <!-- Choice 1: Piony -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/choice1_piony_aligned.jpg', 'Pink Peonies (choice1_piony.jpg) | Library of Congress Collection')">
+                        <img src="./outputs/ncc/choice1_piony_aligned.jpg" alt="Peonies" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">1. Peonies ("Piony")</span>
+                            <span class="pill pill-blue">LoC Curated</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(2,
+                                    8)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(3,
+                                    15)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Choice 2: Locomotive -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/choice2_locomotive_aligned.jpg', 'Steam Locomotive (choice2_locomotive.jpg) | Large Shift Case Study')">
+                        <img src="./outputs/ncc/choice2_locomotive_aligned.jpg" alt="Locomotive" loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">2. Steam Locomotive</span>
+                            <span class="pill pill-blue">LoC Curated</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(3,
+                                    4)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(-17,
+                                    30)</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Choice 3: Capri Child -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap"
+                        onclick="openModal('./outputs/ncc/choice3_capri_child_aligned.jpg', 'Italian Boy in Capri (choice3_capri_child.jpg) | Library of Congress')">
+                        <img src="./outputs/ncc/choice3_capri_child_aligned.jpg" alt="Italian Boy in Capri"
+                            loading="lazy">
+                        <span class="img-zoom-hint">Click to enlarge</span>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-header">
+                            <span class="gallery-card-title">3. Italian Boy in Capri</span>
+                            <span class="pill pill-blue">LoC Curated</span>
+                        </div>
+                        <div class="offset-list">
+                            <div class="offset-row"><span class="offset-g">Green (dx, dy):</span><span class="mono">(-1,
+                                    4)</span></div>
+                            <div class="offset-row"><span class="offset-r">Red (dx, dy):</span><span class="mono">(-1,
+                                    10)</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 6: Failure Analysis & Solutions -->
+        <section class="section-block" id="failure-analysis">
+            <h2 class="section-title">6. Failure Analysis &amp; Algorithmic Insights</h2>
+            <p class="section-desc">Investigating multi-spectral brightness mismatch and metric trade-offs.</p>
+
+            <h3 class="sub-title">Case Study 1: The Emir of Bukhara (`emir.tif`) — Spectral Intensity Mismatch</h3>
+            <p>
+                When applying standard raw pixel NCC or L2 directly on <code>emir.tif</code>, the Red channel alignment
+                fails, yielding a spurious offset of $(-482, 401)$ under NCC and $(44, 66)$ under L2, resulting in heavy
+                chromatic ghosting and misalignment.
+            </p>
+            <p>
+                <strong>The Root Cause:</strong> The Emir is wearing a royal blue silk robe. In the Blue filter
+                negative,
+                the robe reflects nearly all blue light and appears brilliantly bright, nearly white in color. In the
+                Red filter negative, the robe absorbs the incident light and appears pitch black.
+                Raw pixel intensity matching assumes that corresponding scene features share similar pixel
+                luminances across color bands, so the optimization mistakenly attempts to match
+                the dark red robe against the dark interior background instead of the bright blue robe.
+            </p>
+            <p>
+                <strong>The Solution — Sobel Gradient Magnitude:</strong> Instead of aligning raw scalar pixel
+                intensities, each channel is transformed into its spatial gradient magnitude using
+                3&times;3 horizontal and vertical Sobel filters:
+            </p>
+            <div class="math-box">
+                <div class="math-title">Spatial Gradient Magnitude Representation</div>
+                $$G_x = I * \text{Sobel}_x, \quad G_y = I * \text{Sobel}_y, \quad \|\nabla I\| = \sqrt{G_x^2 + G_y^2}$$
+            </div>
+            <p>
+                While absolute pixel brightness changes drastically between color filters, the boundaries, seams,
+                fabric folds, and physical silhouettes of the Emir's robe produce strong gradient peaks across
+                all three color channels. Running the pyramid alignment over these gradient magnitude maps produces an
+                alignment of Green: $(24, 49)$, Red: $(40, 107)$.
+            </p>
+
+            <div class="comparison-container">
+                <div class="comp-item">
+                    <div class="comp-img-wrap"
+                        onclick="openModal('./outputs/comparisons/emir_raw_ncc.jpg', 'Emir of Bukhara: Failure using Raw Pixel NCC (R shift failed to -482, 401)')">
+                        <img src="./outputs/comparisons/emir_raw_ncc.jpg" alt="Emir raw failure" loading="lazy">
+                    </div>
+                    <div class="comp-caption">❌ Raw Pixel NCC Alignment (Failed on Blue Robe)</div>
+                </div>
+                <div class="comp-item">
+                    <div class="comp-img-wrap"
+                        onclick="openModal('./outputs/ncc/emir_aligned.jpg', 'Emir of Bukhara: Success using Sobel Gradient Features (G: 24, 49; R: 40, 107)')">
+                        <img src="./outputs/ncc/emir_aligned.jpg" alt="Emir gradient success" loading="lazy">
+                    </div>
+                    <div class="comp-caption">✅ Sobel Gradient Magnitude Alignment (Crisp &amp; Clean)</div>
+                </div>
+            </div>
+
+            <h3 class="sub-title">Case Study 2: Church of the Resurrection (`church.tif`) — L2 vs. NCC Sensitivity</h3>
+            <ul>
+                <li><strong>Normalized Cross-Correlation (NCC)</strong> succeeded effortlessly, computing Green:
+                    $(4, 25)$ and Red: $(-4, 58)$.</li>
+                <li><strong>Sum of Squared Differences (L2 / SSD)</strong> drifted off horizontally, incorrectly
+                    computing Green: $(454, 49)$ and Red: $(447, 79)$.</li>
+            </ul>
+            <p>
+                <strong>Insight:</strong> SSD/L2 measures raw Euclidean distance: $\sum (I_1 - I_2)^2$. Atmospheric
+                lighting
+                shift, global exposure difference, or cloud passage during the exposure interval can easily result in
+                large pixel intensity differences between color channels. In contrast, NCC subtracts the local mean
+                $(\mu)$
+                and
+                divides by standard deviation $(\sigma)$, making it invariant to any positive affine
+                brightness transformation ($I' = \alpha I + \beta$), making it more robust for photographic alignment.
+            </p>
+
+            <h3 class="sub-title">Case Study 3: Steam Locomotive (`choice2_locomotive.jpg`) — Search Window Boundary
+            </h3>
+            <p>
+                In <code>choice2_locomotive.jpg</code>, the vertical shift required by the Red channel of $dy = 30$
+                pixels was pegged at the boundary $(-15, 15)$ or $(12, 15)$ by the search loop, leaving noticeable
+                color ghosting along the smokestack and tracks.
+                The multi-scale pyramid and expanded widow single-scale algorithms smoothly converge to the true global
+                optimum at <strong>Green: $(3, 4)$</strong> and
+                <strong>Red: $(-17, 30)$</strong>.
+            </p>
+
+            <div class="comparison-container">
+                <div class="comp-item">
+                    <div class="comp-img-wrap"
+                        onclick="openModal('./outputs/comparisons/choice2_locomotive_clipped15.jpg', 'Locomotive with single-scale search clipped at [-15, 15]')">
+                        <img src="./outputs/comparisons/choice2_locomotive_clipped15.jpg" alt="Locomotive clipped"
+                            loading="lazy">
+                    </div>
+                    <div class="comp-caption">⚠️ Search Clipped at [-15, 15] Window (Color Fringing)</div>
+                </div>
+                <div class="comp-item">
+                    <div class="comp-img-wrap"
+                        onclick="openModal('./outputs/ncc/choice2_locomotive_aligned.jpg', 'Locomotive with full displacement [-17, 30]')">
+                        <img src="./outputs/ncc/choice2_locomotive_aligned.jpg" alt="Locomotive full alignment"
+                            loading="lazy">
+                    </div>
+                    <div class="comp-caption">✅ Pyramid / Full Window Alignment (Shift: -17, 30)</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 7: Offset & Runtime Table -->
+        <section class="section-block" id="displacement-table">
+            <h2 class="section-title">7. Full Displacement &amp; Runtime Summary</h2>
+            <p class="section-desc">
+                Comprehensive tabulated records for all 17 processed images (14 benchmark images + 3 LoC selections)
+                listing channel dimensions, computed displacements, and execution times.
+            </p>
+
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Image Filename</th>
+                            <th>Resolution (per band)</th>
+                            <th>Green Shift (dx, dy)</th>
+                            <th>Red Shift (dx, dy)</th>
+                            <th>Algorithm</th>
+                            <th>Runtime</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>cathedral.jpg</code></td>
+                            <td class="mono">341 × 390</td>
+                            <td class="mono offset-g">(2, 5)</td>
+                            <td class="mono offset-r">(3, 12)</td>
+                            <td>Single-Scale</td>
+                            <td class="mono">0.08 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>monastery.jpg</code></td>
+                            <td class="mono">341 × 391</td>
+                            <td class="mono offset-g">(2, -3)</td>
+                            <td class="mono offset-r">(2, 3)</td>
+                            <td>Single-Scale</td>
+                            <td class="mono">0.08 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>tobolsk.jpg</code></td>
+                            <td class="mono">341 × 396</td>
+                            <td class="mono offset-g">(3, 3)</td>
+                            <td class="mono offset-r">(3, 6)</td>
+                            <td>Single-Scale</td>
+                            <td class="mono">0.08 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>church.tif</code></td>
+                            <td class="mono">3202 × 3634</td>
+                            <td class="mono offset-g">(4, 25)</td>
+                            <td class="mono offset-r">(-4, 58)</td>
+                            <td>Pyramid (NCC)</td>
+                            <td class="mono">1.82 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>emir.tif</code></td>
+                            <td class="mono">3209 × 3702</td>
+                            <td class="mono offset-g">(24, 49)</td>
+                            <td class="mono offset-r">(40, 107)</td>
+                            <td>Pyramid (Sobel)</td>
+                            <td class="mono">2.14 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>harvesters.tif</code></td>
+                            <td class="mono">3218 × 3683</td>
+                            <td class="mono offset-g">(17, 60)</td>
+                            <td class="mono offset-r">(14, 124)</td>
+                            <td>Pyramid (NCC)</td>
+                            <td class="mono">1.85 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>icon.tif</code></td>
+                            <td class="mono">3244 × 3741</td>
+                            <td class="mono offset-g">(17, 41)</td>
+                            <td class="mono offset-r">(23, 89)</td>
+                            <td>Pyramid (NCC)</td>
+                            <td class="mono">1.89 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>ilemselga.tif</code></td>
+                            <td class="mono">3270 × 3800</td>
+                            <td class="mono offset-g">(7, 40)</td>
+                            <td class="mono offset-r">(11, 130)</td>
+                            <td>Pyramid (NCC)</td>
+                            <td class="mono">1.94 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>melons.tif</code></td>
+                            <td class="mono">3241 × 3770</td>
+                            <td class="mono offset-g">(10, 81)</td>
+                            <td class="mono offset-r">(14, 178)</td>
+                            <td>Pyramid (NCC)</td>
+                            <td class="mono">1.91 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>religous_painting.tif</code></td>
+                            <td class="mono">3193 × 3742</td>
+                            <td class="mono offset-g">(3, 28)</td>
+                            <td class="mono offset-r">(7, 68)</td>
+                            <td>Pyramid (NCC)</td>
+                            <td class="mono">1.88 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>self_portrait.tif</code></td>
+                            <td class="mono">3251 × 3810</td>
+                            <td class="mono offset-g">(29, 79)</td>
+                            <td class="mono offset-r">(37, 176)</td>
+                            <td>Pyramid (NCC)</td>
+                            <td class="mono">1.95 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>siren.tif</code></td>
+                            <td class="mono">3250 × 3817</td>
+                            <td class="mono offset-g">(-6, 49)</td>
+                            <td class="mono offset-r">(-25, 96)</td>
+                            <td>Pyramid (NCC)</td>
+                            <td class="mono">1.93 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>three_generations.tif</code></td>
+                            <td class="mono">3209 × 3714</td>
+                            <td class="mono offset-g">(14, 52)</td>
+                            <td class="mono offset-r">(11, 111)</td>
+                            <td>Pyramid (NCC)</td>
+                            <td class="mono">1.87 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>wharf.tif</code></td>
+                            <td class="mono">3244 × 3761</td>
+                            <td class="mono offset-g">(-7, 15)</td>
+                            <td class="mono offset-r">(-16, 82)</td>
+                            <td>Pyramid (NCC)</td>
+                            <td class="mono">1.90 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>choice1_piony.jpg</code></td>
+                            <td class="mono">341 × 398</td>
+                            <td class="mono offset-g">(2, 8)</td>
+                            <td class="mono offset-r">(3, 15)</td>
+                            <td>Single-Scale / Pyramid</td>
+                            <td class="mono">0.09 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>choice2_locomotive.jpg</code></td>
+                            <td class="mono">341 × 400</td>
+                            <td class="mono offset-g">(3, 4)</td>
+                            <td class="mono offset-r">(-17, 30)</td>
+                            <td>Pyramid / Window 40</td>
+                            <td class="mono">0.11 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                        <tr>
+                            <td><code>choice3_capri_child.jpg</code></td>
+                            <td class="mono">341 × 401</td>
+                            <td class="mono offset-g">(-1, 4)</td>
+                            <td class="mono offset-r">(-1, 10)</td>
+                            <td>Single-Scale / Pyramid</td>
+                            <td class="mono">0.09 s</td>
+                            <td><span class="pill pill-green">Perfect</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Lightbox Modal -->
+    <div class="modal" id="imageModal" onclick="closeModal()">
+        <span class="modal-close" onclick="closeModal()">&times;</span>
+        <img class="modal-content" id="modalImg" alt="Enlarged view">
+        <div class="modal-caption" id="modalCaption"></div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-links">
+                <a href="../index.html">Home</a>
+                <a href="https://github.com/ChrisSong214" target="_blank" rel="noopener noreferrer">GitHub</a>
+                <a href="https://cal-cs180.github.io/fa26/" target="_blank" rel="noopener noreferrer">CS180 Course
+                    Page</a>
+            </div>
+            <p>&copy; <span id="current-year"></span> Chris Song · UC Berkeley · Computer Science &amp; Statistics</p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+        document.getElementById('current-year').textContent = new Date().getFullYear();
+
+        // Theme Toggle
+        const themeBtn = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const themeText = document.getElementById('theme-text');
+
+        const storedTheme = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+        if (storedTheme === 'light' || (!storedTheme && !prefersDark)) {
+            document.documentElement.setAttribute('data-theme', 'light');
+            themeIcon.textContent = '🌙';
+            themeText.textContent = 'Dark';
+        } else {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            themeIcon.textContent = '☀️';
+            themeText.textContent = 'Light';
+        }
+
+        themeBtn.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            if (currentTheme === 'light') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+                themeIcon.textContent = '☀️';
+                themeText.textContent = 'Light';
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+                localStorage.setItem('theme', 'light');
+                themeIcon.textContent = '🌙';
+                themeText.textContent = 'Dark';
+            }
+        });
+
+
+        // Modal / Lightbox
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImg');
+        const modalCaption = document.getElementById('modalCaption');
+
+        function openModal(src, caption) {
+            modal.classList.add('open');
+            modalImg.src = src;
+            modalCaption.textContent = caption;
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            modal.classList.remove('open');
+            document.body.style.overflow = 'auto';
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('open')) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+
+</html>
