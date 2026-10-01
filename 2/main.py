@@ -875,6 +875,9 @@ def run_p2(out_dir: str="output/part2", use_cache: bool=True):
     process_hybrid_pair("inputs/2.2 - cat.jpg", leopard_p, "cat", "leopard", 6.0, 3.0, "cat_leopard")
     # Apple & Skull
     process_hybrid_pair("inputs/2.2 - apple.png", "inputs/2.2 - skull.png", "apple", "skull", 12.0, 8.0, "apple_skull", scale_low=1.0, scale_high=1.8)
+    # Einstein & Monroe
+    monroe_p = "inputs/2.2 - MarilynMonroe.jpeg" if os.path.exists("inputs/2.2 - MarilynMonroe.jpeg") else "inputs/2.2 - monroe.jpg"
+    process_hybrid_pair(monroe_p, "inputs/2.2 - einstein.jpg", "monroe", "einstein", 8.0, 3.5, "einstein_monroe")
 
     print("part 2.3 & 2.4: multiresolution blending")
     apple_path = "inputs/2 - apple.jpeg"

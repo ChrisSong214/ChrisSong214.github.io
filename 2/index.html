@@ -1145,9 +1145,38 @@
                 </div>
             </div>
 
-            <!-- HYBRID 3: APPLE & SKULL (FAILURE CASE) -->
+            <!-- HYBRID 3: MARILYN MONROE & ALBERT EINSTEIN -->
+            <h3 class="sub-title">3. Marilyn Monroe &amp; Albert Einstein (Classic Hybrid Masterpiece)</h3>
+            <p>
+                Recreating the classic hybrid image introduced by Oliva, Torralba, and Schyns (SIGGRAPH 2006). A low-pass filter is applied to Marilyn Monroe ($\sigma_{\text{low}} = 8.0$) to capture her soft facial silhouette, flowing blonde hair, and gentle smile, while a high-pass filter is applied to Albert Einstein ($\sigma_{\text{high}} = 3.5$) to isolate his sharp mustache, wrinkled brow, and iconic gaze.
+            </p>
+            <p>
+                <strong>Perceptual Illusion:</strong> When viewed from close up, Einstein's sharp facial details and mustache dominate. As you step back (or squint), Einstein fades away and Marilyn Monroe's glamorous portrait clearly emerges!
+            </p>
+
+            <div class="gallery-card">
+                <div class="gallery-card-img-wrap" onclick="openModal('output/part2/2.2_hybrid_einstein_monroe_process.png', 'Part 2.2: Hybrid Image Process - Marilyn Monroe & Albert Einstein')">
+                    <img src="output/part2/2.2_hybrid_einstein_monroe_process.png" alt="Part 2.2 Einstein Monroe Process">
+                    <span class="img-zoom-hint">🔍 Click to Expand</span>
+                </div>
+                <div class="gallery-card-caption">
+                    <strong>Figure 2.2E:</strong> Process for Monroe &amp; Einstein hybrid: Low-pass Marilyn Monroe ($\sigma_{\text{low}}=8.0$), High-pass Albert Einstein ($\sigma_{\text{high}}=3.5$), isolated frequency components, and final combined hybrid image.
+                </div>
+            </div>
+
+            <div class="gallery-card">
+                <div class="gallery-card-img-wrap" onclick="openModal('output/part2/2.2_hybrid_einstein_monroe_fft.png', 'Part 2.2: 2D Fourier Frequency Analysis - Marilyn Monroe & Albert Einstein')">
+                    <img src="output/part2/2.2_hybrid_einstein_monroe_fft.png" alt="Part 2.2 Einstein Monroe FFT">
+                    <span class="img-zoom-hint">🔍 Click to Expand</span>
+                </div>
+                <div class="gallery-card-caption">
+                    <strong>Figure 2.2F: 2D Fourier Frequency Analysis for Monroe &amp; Einstein.</strong> The log-magnitude spectrum illustrates how the low-frequency DC energy from Monroe's face combines with the high-frequency spectral ring of Einstein's features.
+                </div>
+            </div>
+
+            <!-- HYBRID 4: APPLE & SKULL (FAILURE CASE) -->
             <h3 class="sub-title">
-                <span>3. Apple &amp; Skull</span>
+                <span>4. Apple &amp; Skull</span>
                 <span class="badge" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; font-size: 0.75rem; vertical-align: middle; margin-left: 8px;">Failure / Error Case Analysis</span>
             </h3>
             <p>
@@ -1160,7 +1189,7 @@
                     <span class="img-zoom-hint">🔍 Click to Expand</span>
                 </div>
                 <div class="gallery-card-caption">
-                    <strong>Figure 2.2E: Apple &amp; Skull Hybrid Process (Failure Case).</strong> Low-pass Apple ($\sigma_{\text{low}} = 12.0$), High-pass Skull ($\sigma_{\text{high}} = 8.0, \beta=1.8$). While the high-frequency skull details are clear up close, the skull's dark eye sockets and jawline create severe silhouette artifacts that destroy the distant illusion.
+                    <strong>Figure 2.2G: Apple &amp; Skull Hybrid Process (Failure Case).</strong> Low-pass Apple ($\sigma_{\text{low}} = 12.0$), High-pass Skull ($\sigma_{\text{high}} = 8.0, \beta=1.8$). While the high-frequency skull details are clear up close, the skull's dark eye sockets and jawline create severe silhouette artifacts that destroy the distant illusion.
                 </div>
             </div>
 
@@ -1170,7 +1199,7 @@
                     <span class="img-zoom-hint">🔍 Click to Expand</span>
                 </div>
                 <div class="gallery-card-caption">
-                    <strong>Figure 2.2F: 2D Fourier Frequency Analysis for Apple &amp; Skull.</strong> The log-magnitude spectrum reveals significant energy imbalance in the mid-frequency band, explaining why high-pass isolation is challenging for images with large solid dark regions.
+                    <strong>Figure 2.2H: 2D Fourier Frequency Analysis for Apple &amp; Skull.</strong> The log-magnitude spectrum reveals significant energy imbalance in the mid-frequency band, explaining why high-pass isolation is challenging for images with large solid dark regions.
                 </div>
             </div>
 
@@ -1180,7 +1209,7 @@
                     <span class="img-zoom-hint">🔍 Click to Expand</span>
                 </div>
                 <div class="gallery-card-caption">
-                    <strong>Figure 2.2G: Parameter Exploration Grid &amp; Failure Diagnostics.</strong> Testing multiple combinations of $(\sigma_{\text{low}}, \sigma_{\text{high}}, \beta)$. Across all cutoffs, the fundamental silhouette mismatch persists.
+                    <strong>Figure 2.2I: Parameter Exploration Grid &amp; Failure Diagnostics.</strong> Testing multiple combinations of $(\sigma_{\text{low}}, \sigma_{\text{high}}, \beta)$. Across all cutoffs, the fundamental silhouette mismatch persists.
                 </div>
             </div>
 
