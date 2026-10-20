@@ -1,0 +1,47 @@
+/* Aligned image panels. Sheet cells display existing notebook pixels without editing the assets. */
+.example-panel { max-width: 860px; margin: 30px auto; }
+.example-panel .panel-title { margin: 0 0 18px; text-align: center; font-size: 19px; }
+.image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.image-grid.grid-six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.image-grid.grid-eight { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.image-tile { min-width: 0; margin: 0; text-align: center; }
+.tile-media { position: relative; display: block; width: 100%; aspect-ratio: 1; overflow: hidden; background: #fff; }
+.tile-media img { display: block; width: 100%; height: 100%; max-width: 100%; object-fit: contain; margin: 0; }
+.tile-media.sheet-cell {
+  /* Crop bounds are measured in the source image's pixels, excluding plot labels and margins. */
+  aspect-ratio: var(--crop-width) / var(--crop-height);
+}
+.tile-media.sheet-cell img {
+  position: absolute;
+  width: calc(var(--sheet-width) / var(--crop-width) * 100%);
+  max-width: none; height: auto; aspect-ratio: auto;
+  left: calc(var(--crop-x) / var(--crop-width) * -100%);
+  top: calc(var(--crop-y) / var(--crop-height) * -100%);
+}
+.tile-media .upside-down { transform: rotate(180deg); }
+.tile-media.distant-view img { transform: scale(.25); }
+.wide-tile .tile-media { aspect-ratio: 4 / 3; }
+.image-tile figcaption { margin: 0; padding: 10px 4px 0; font-size: 15px; line-height: 1.5; color: #586574; }
+.input-reference { width: 150px; margin: 0 auto 24px; }
+.result-note { max-width: 860px; margin: 12px auto 24px; color: #586574; font-size: 15px; }
+/* Existing introductory and inpainting examples retain their content, now in a 2 x 2 grid. */
+.image-container {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 760px; gap: 24px; align-items: start;
+}
+.image-container > div {
+  width: auto !important; max-width: none !important; min-width: 0;
+  margin: 0; padding: 0;
+}
+.image-container > div > img { width: 100%; aspect-ratio: 1; object-fit: contain; }
+.image-container > div p { min-height: 3em; }
+.demo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 760px; margin-inline: auto; gap: 24px; }
+.tile-media:focus-visible { outline: 3px solid #c99a35; outline-offset: 4px; }
+@media (max-width: 650px) {
+  .image-grid, .image-grid.grid-six, .image-grid.grid-eight, .image-container, .demo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px;
+  }
+  .image-tile figcaption { font-size: 13px; padding-inline: 0; }
+  .input-reference { width: 110px; }
+  .example-panel { margin-block: 24px; }
+}

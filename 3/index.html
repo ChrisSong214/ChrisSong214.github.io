@@ -1,0 +1,2008 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project 3: Fun with Diffusion & Flow Models | Chris Song</title>
+    <meta name="description"
+        content="CS180 Project 3: Flow Matching, Classifier-Free Guidance, Image-to-Image Editing, Visual Anagrams, Hybrid Images, and Training Flow Matching UNets from Scratch on MNIST.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --bg-secondary: #111827;
+            --card-bg: rgba(17, 24, 39, 0.78);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-hover-border: rgba(139, 92, 246, 0.5);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-primary: #8b5cf6;
+            --accent-secondary: #ec4899;
+            --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #d946ef 50%, #3b82f6 100%);
+            --glow: rgba(139, 92, 246, 0.15);
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        [data-theme="light"] {
+            --bg: #f8fafc;
+            --bg-secondary: #ffffff;
+            --card-bg: rgba(255, 255, 255, 0.92);
+            --card-border: rgba(0, 0, 0, 0.08);
+            --card-hover-border: rgba(139, 92, 246, 0.6);
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --accent-primary: #7c3aed;
+            --accent-secondary: #db2777;
+            --glow: rgba(124, 58, 237, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-primary);
+            line-height: 1.65;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .bg-glow {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100vw;
+            height: 100vh;
+            background:
+                radial-gradient(circle at 15% 15%, rgba(139, 92, 246, 0.14) 0%, transparent 45%),
+                radial-gradient(circle at 85% 25%, rgba(236, 72, 153, 0.11) 0%, transparent 45%),
+                radial-gradient(circle at 50% 85%, rgba(59, 130, 246, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1160px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header / Navbar */
+        header {
+            position: sticky;
+            top: 0;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            background: rgba(11, 15, 25, 0.75);
+            border-bottom: 1px solid var(--card-border);
+            z-index: 100;
+            transition: var(--transition);
+        }
+
+        [data-theme="light"] header {
+            background: rgba(248, 250, 252, 0.85);
+        }
+
+        .nav-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 70px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.92rem;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .back-link:hover {
+            color: var(--accent-primary);
+            transform: translateX(-2px);
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .nav-links a:hover {
+            color: var(--text-primary);
+        }
+
+        .theme-toggle-btn {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-primary);
+            padding: 8px 14px;
+            border-radius: 9999px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+
+        .theme-toggle-btn:hover {
+            border-color: var(--accent-primary);
+            transform: translateY(-1px);
+        }
+
+        /* Hero */
+        .project-hero {
+            padding: 48px 0 24px 0;
+        }
+
+        .badge-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 9999px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-purple {
+            background: rgba(139, 92, 246, 0.15);
+            border: 1px solid rgba(139, 92, 246, 0.35);
+            color: #c4b5fd;
+        }
+
+        [data-theme="light"] .badge-purple {
+            color: #6d28d9;
+            background: rgba(109, 40, 217, 0.1);
+        }
+
+        .badge-pink {
+            background: rgba(236, 72, 153, 0.15);
+            border: 1px solid rgba(236, 72, 153, 0.35);
+            color: #f472b6;
+        }
+
+        [data-theme="light"] .badge-pink {
+            color: #be185d;
+            background: rgba(219, 39, 119, 0.1);
+        }
+
+        .badge-blue {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            color: #93c5fd;
+        }
+
+        [data-theme="light"] .badge-blue {
+            color: #1d4ed8;
+            background: rgba(37, 99, 235, 0.1);
+        }
+
+        .project-hero h1 {
+            font-size: clamp(2.1rem, 4.4vw, 3.1rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+            margin-bottom: 14px;
+        }
+
+        .gradient-text {
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: inline-block;
+        }
+
+        .project-subtitle {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 960px;
+            margin-bottom: 16px;
+            line-height: 1.6;
+        }
+
+        .project-meta {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        /* TOC Pills */
+        .toc-bar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 28px 0 16px 0;
+            padding: 14px 18px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .toc-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            margin-right: 6px;
+        }
+
+        .toc-link {
+            font-size: 0.84rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+
+        .toc-link:hover {
+            color: var(--text-primary);
+            background: rgba(139, 92, 246, 0.15);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Section Blocks & Anchor Offsets */
+        .section-block, [id^="part-"], [id^="a-"], [id^="b-"] {
+            scroll-margin-top: 85px;
+        }
+
+        .section-block {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 38px;
+            margin: 36px 0 48px 0;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .part-header {
+            border-bottom: 2px solid var(--card-border);
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+
+        .part-tag {
+            font-size: 0.85rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent-primary);
+            margin-bottom: 6px;
+        }
+
+        .section-title {
+            font-size: 1.7rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-desc {
+            font-size: 1.02rem;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        h3.sub-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 36px 0 14px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        h4.inner-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 22px 0 10px 0;
+        }
+
+        p {
+            margin-bottom: 14px;
+            color: var(--text-secondary);
+            font-size: 0.98rem;
+        }
+
+        p strong,
+        li strong {
+            color: var(--text-primary);
+        }
+
+        ul, ol {
+            margin-left: 24px;
+            margin-bottom: 18px;
+            color: var(--text-secondary);
+        }
+
+        li {
+            margin-bottom: 8px;
+            font-size: 0.97rem;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(139, 92, 246, 0.12);
+            color: #c4b5fd;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.88em;
+        }
+
+        [data-theme="light"] code {
+            color: #6d28d9;
+            background: rgba(109, 40, 217, 0.08);
+        }
+
+        /* Math & Formulas */
+        .math-box {
+            background: rgba(0, 0, 0, 0.28);
+            border: 1px solid var(--card-border);
+            border-left: 4px solid var(--accent-primary);
+            border-radius: var(--radius-sm);
+            padding: 18px 22px;
+            margin: 18px 0 24px 0;
+            font-size: 0.98rem;
+            line-height: 1.6;
+            color: var(--text-primary);
+            overflow-x: auto;
+        }
+
+        [data-theme="light"] .math-box {
+            background: #f1f5f9;
+        }
+
+        .math-title {
+            font-weight: 700;
+            color: var(--accent-primary);
+            margin-bottom: 8px;
+            font-size: 0.88rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Callouts */
+        .callout {
+            border-radius: var(--radius-md);
+            padding: 18px 22px;
+            margin: 20px 0;
+            border: 1px solid var(--card-border);
+            background: rgba(139, 92, 246, 0.07);
+            border-left: 4px solid var(--accent-primary);
+        }
+
+        .callout-success {
+            background: rgba(16, 185, 129, 0.08);
+            border-left-color: #10b981;
+        }
+
+        .callout-blue {
+            background: rgba(59, 130, 246, 0.08);
+            border-left-color: #3b82f6;
+        }
+
+        .callout-title {
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Grids */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin: 22px 0;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+            margin: 22px 0;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin: 22px 0;
+        }
+
+        @media (max-width: 900px) {
+            .grid-3, .grid-4 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            .grid-2, .grid-3, .grid-4 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Gallery Cards */
+        .gallery-card {
+            background: rgba(15, 23, 42, 0.65);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            margin: 22px 0;
+            transition: var(--transition);
+        }
+
+        [data-theme="light"] .gallery-card {
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.09);
+        }
+
+        .gallery-card:hover {
+            border-color: var(--card-hover-border);
+            box-shadow: 0 10px 25px var(--glow);
+        }
+
+        .gallery-card-img-wrap {
+            position: relative;
+            background: #000;
+            width: 100%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .gallery-card-img-wrap img {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: contain;
+            transition: transform 0.3s ease;
+        }
+
+        .gallery-card:hover .gallery-card-img-wrap img {
+            transform: scale(1.01);
+        }
+
+        .img-zoom-hint {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            backdrop-filter: blur(4px);
+        }
+
+        .gallery-card-img-wrap:hover .img-zoom-hint {
+            opacity: 1;
+        }
+
+        .gallery-card-caption {
+            padding: 14px 18px;
+            background: rgba(11, 15, 25, 0.45);
+            border-top: 1px solid var(--card-border);
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+        }
+
+        [data-theme="light"] .gallery-card-caption {
+            background: #f8fafc;
+        }
+
+        .gallery-card-caption strong {
+            color: var(--text-primary);
+        }
+
+        /* Benchmark Metric Cards */
+        .metric-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+
+        .metric-card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 18px;
+            text-align: center;
+        }
+
+        [data-theme="light"] .metric-card {
+            background: #ffffff;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .metric-val {
+            font-size: 1.6rem;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-primary);
+            margin-bottom: 4px;
+        }
+
+        .metric-note {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+
+        /* Interactive Anagram Component */
+        .anagram-interactive-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            margin: 24px 0;
+        }
+
+        [data-theme="light"] .anagram-interactive-container {
+            background: #ffffff;
+        }
+
+        .anagram-flipper {
+            position: relative;
+            width: 320px;
+            height: 320px;
+            perspective: 1000px;
+            margin-bottom: 18px;
+            cursor: pointer;
+        }
+
+        .anagram-img-box {
+            width: 100%;
+            height: 100%;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            border: 2px solid var(--card-border);
+            transition: transform 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-origin: center center;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        .anagram-img-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .anagram-flipper.flipped .anagram-img-box {
+            transform: rotate(180deg);
+        }
+
+        .anagram-caption-box {
+            text-align: center;
+            min-height: 54px;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            background: rgba(0, 0, 0, 0.25);
+            width: 100%;
+            max-width: 460px;
+        }
+
+        [data-theme="light"] .anagram-caption-box {
+            background: #f1f5f9;
+        }
+
+        .anagram-prompt {
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+            transition: opacity 0.3s ease;
+        }
+
+        .anagram-subprompt {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .flip-btn {
+            margin-top: 12px;
+            padding: 8px 18px;
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 0.86rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .flip-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        /* Interactive Hybrid Component */
+        .hybrid-interactive-box {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            margin: 24px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        [data-theme="light"] .hybrid-interactive-box {
+            background: #ffffff;
+        }
+
+        .hybrid-display-area {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 32px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+            width: 100%;
+        }
+
+        .hybrid-view {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .hybrid-frame-large {
+            width: 280px;
+            height: 280px;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            border: 2px solid var(--card-border);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+
+        .hybrid-frame-large img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .hybrid-frame-small {
+            width: 70px;
+            height: 70px;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            border: 2px solid var(--card-border);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: transform 0.3s ease;
+        }
+
+        .hybrid-frame-small img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .hybrid-view-label {
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--accent-primary);
+        }
+
+        /* Lightbox Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            padding-top: 40px;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(5, 8, 15, 0.94);
+            backdrop-filter: blur(10px);
+        }
+
+        .modal.open {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            margin: auto;
+            display: block;
+            max-width: 90vw;
+            max-height: 82vh;
+            border-radius: var(--radius-sm);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+            object-fit: contain;
+        }
+
+        .modal-caption {
+            margin: 12px auto;
+            text-align: center;
+            color: #e2e8f0;
+            font-size: 0.92rem;
+            max-width: 800px;
+            padding: 0 16px;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 28px;
+            color: #fff;
+            font-size: 32px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .modal-close:hover {
+            color: var(--accent-primary);
+        }
+
+        /* Scrollable long image container */
+        .scroll-image-wrap {
+            max-height: 520px;
+            overflow-y: auto;
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm);
+            background: #000;
+            position: relative;
+        }
+
+        .scroll-image-wrap img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--card-border);
+            padding: 40px 0;
+            margin-top: 80px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.88rem;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .footer-links a:hover {
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-glow"></div>
+
+    <!-- Navigation Header -->
+    <header>
+        <div class="container">
+            <div class="nav-inner">
+                <a href="../index.html" class="back-link">
+                    <span>←</span> Portfolio Home
+                </a>
+                <div class="nav-links">
+                    <a href="#part-a">Part A: Flow Models</a>
+                    <a href="#part-b">Part B: Scratch UNet</a>
+                    <button class="theme-toggle-btn" id="theme-toggle" aria-label="Toggle color theme">
+                        <span id="theme-icon">☀️</span>
+                        <span id="theme-text">Light</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Project Hero -->
+        <section class="project-hero">
+            <div class="badge-row">
+                <span class="badge badge-purple">UC Berkeley CS180</span>
+                <span class="badge badge-pink">Project 3</span>
+                <span class="badge badge-blue">Flow Matching & Diffusion</span>
+            </div>
+            <h1>
+                Fun with <span class="gradient-text">Diffusion &amp; Flow Models</span>
+            </h1>
+            <p class="project-subtitle">
+                Exploring pretrained Flow Matching text-to-image models (PixNerd-XXL), Euler sampling trajectories,
+                Classifier-Free Guidance, image editing on the natural manifold, multi-view optical illusions (Visual Anagrams &amp; Hybrids),
+                and building flow matching generative UNets from scratch in PyTorch on MNIST.
+            </p>
+            <div class="project-meta">
+                <span>👤 <strong>Chris Song</strong></span>
+                <span>📅 October 2026</span>
+                <span>⚡ PyTorch &amp; CUDA (Tesla T4)</span>
+                <span>📚 Generative Computer Vision</span>
+            </div>
+
+            <!-- Quick Table of Contents -->
+            <nav class="toc-bar" aria-label="Table of contents">
+                <span class="toc-title">Jump to:</span>
+                <a href="#part-a" class="toc-link">Part A Overview</a>
+                <a href="#a-1-1" class="toc-link">1.1 Noisy Inputs</a>
+                <a href="#a-1-2" class="toc-link">1.2 Classical Denoising</a>
+                <a href="#a-1-3" class="toc-link">1.3 One-Step Denoising</a>
+                <a href="#a-1-4" class="toc-link">1.4 Velocity Diagnostics</a>
+                <a href="#a-1-5" class="toc-link">1.5 Euler Sampling</a>
+                <a href="#a-1-6" class="toc-link">1.6 Pure Noise Gen</a>
+                <a href="#a-2-1" class="toc-link">2.1 CFG</a>
+                <a href="#a-3-1" class="toc-link">3.1 SDEdit</a>
+                <a href="#a-3-2" class="toc-link">3.2 Text Edit</a>
+                <a href="#a-3-3" class="toc-link">3.3 Visual Anagrams</a>
+                <a href="#a-3-4" class="toc-link">3.4 Hybrids</a>
+                <a href="#part-b" class="toc-link">Part B Overview</a>
+                <a href="#b-1-1" class="toc-link">B1.1 UNet</a>
+                <a href="#b-1-2" class="toc-link">B1.2 Noise Levels</a>
+                <a href="#b-1-2-1" class="toc-link">B1.2.1 Training</a>
+                <a href="#b-1-2-2" class="toc-link">B1.2.2 OOD Testing</a>
+                <a href="#b-1-2-3" class="toc-link">B1.2.3 Pure Noise Bayes</a>
+                <a href="#b-2-1" class="toc-link">B2.1 Time Conditioning</a>
+                <a href="#b-2-2" class="toc-link">B2.2 Training Time UNet</a>
+                <a href="#b-2-3" class="toc-link">B2.3 Sampling</a>
+                <a href="#b-2-4" class="toc-link">B2.4 Class Conditioning</a>
+                <a href="#b-2-5" class="toc-link">B2.5 Scheduler Ablation</a>
+                <a href="#b-2-6" class="toc-link">B2.6 Guided Digits</a>
+            </nav>
+        </section>
+
+        <!-- ======================================================== -->
+        <!-- PART A -->
+        <!-- ======================================================== -->
+        <section class="section-block" id="part-a">
+            <div class="part-header">
+                <div class="part-tag">Part A</div>
+                <h2 class="section-title">Exploring the Power of Flow Models</h2>
+                <p class="section-desc">
+                    Investigating continuous normalizing flows with the pretrained <strong>PixNerd-XXL-P16-T2I</strong> model.
+                    We examine straight probability trajectories, analyze velocity prediction errors, benchmark iterative Euler integration,
+                    amplify semantic signals with Classifier-Free Guidance (CFG), and build creative optical illusions.
+                </p>
+            </div>
+
+            <!-- Math Foundation Box -->
+            <div class="math-box">
+                <div class="math-title">Mathematical Foundation: Flow Matching vs. Diffusion</div>
+                <p>
+                    Standard diffusion models define curved stochastic paths reversing a stochastic differential equation (SDE).
+                    In contrast, <strong>Flow Matching</strong> defines a deterministic continuous normalizing flow along straight, constant-speed
+                    probability trajectories connecting pure Gaussian noise $x_0 \sim \mathcal{N}(0, I)$ at $t=0$ to clean images $x_1$ at $t=1$:
+                </p>
+                $$x_t = (1-t)x_0 + t x_1 = (1-t)\epsilon + t x_1, \quad t \in [0, 1]$$
+                <p>
+                    The true velocity vector field along this trajectory is constant:
+                </p>
+                $$v_{\mathrm{gt}}(x_t, t) = \frac{dx_t}{dt} = x_1 - x_0 = x_1 - \epsilon$$
+                <p>
+                    The neural network $v_\theta(x_t, t, c)$ is trained to regress this vector field conditioned on text embeddings $c$:
+                </p>
+                $$\mathcal{L}_{\mathrm{CFM}}(\theta) = \mathbb{E}_{t, x_0, x_1} \left[ \| v_\theta(x_t, t, c) - (x_1 - x_0) \|^2 \right]$$
+            </div>
+
+            <!-- Section 1.1 -->
+            <div id="a-1-1">
+                <h3 class="sub-title">1.1 Constructing Noisy Training Inputs</h3>
+                <p>
+                    To understand the forward process, we sample a fixed Gaussian noise tensor $\epsilon \sim \mathcal{N}(0, I)$ with seed $180$,
+                    and linearly interpolate with our clean personal input image ($x_1$) at timesteps $t \in \{0.25, 0.50, 0.75\}$ using:
+                    $x_t = (1-t)\epsilon + t x_1$.
+                </p>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/training_inputs.png', 'Section 1.1: Original clean image and forward noised states at t=0.25, 0.50, 0.75')">
+                        <img src="./part_a_results/training_inputs.png" alt="Section 1.1: Original and noisy training inputs" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Click to zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure 1.1:</strong> Linear forward process on our personal photograph (Honey Bear Jar).
+                        At $t=0.75$, the signal dominates with fine grain. At $t=0.50$, noise and signal share equal amplitude, blurring edges.
+                        At $t=0.25$, noise heavily dominates, masking almost all geometric structures.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 1.2 -->
+            <div id="a-1-2">
+                <h3 class="sub-title">1.2 Classical Denoising (Gaussian Blur Baseline)</h3>
+                <p>
+                    As a classical image processing baseline, we attempt to denoise each saved input by first dividing by $t$ to restore clean signal amplitude
+                    ($x_t / t = x_1 + \frac{1-t}{t}\epsilon$), and then applying 2D Gaussian filters.
+                    We perform an exhaustive grid sweep over $\sigma \in \{1.0, 2.0, 4.0, 8.0, 16.0\}$ and select the $\sigma$ that minimizes Mean Squared Error (MSE)
+                    to the known ground truth clean image.
+                </p>
+                <div class="grid-3">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/blur_0.25.png', 'Classical Denoising at t=0.25 (Optimal sigma=8.0)')">
+                            <img src="./part_a_results/blur_0.25.png" alt="Gaussian blur denoising t=0.25" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>$t = 0.25$ (Best $\sigma = 8.0$):</strong> High noise turns into flat blurry blotches. Fine details are completely unrecoverable.
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/blur_0.5.png', 'Classical Denoising at t=0.50 (Optimal sigma=4.0)')">
+                            <img src="./part_a_results/blur_0.5.png" alt="Gaussian blur denoising t=0.50" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>$t = 0.50$ (Best $\sigma = 4.0$):</strong> Moderate noise reduction at the expense of blurring all high-frequency textures (MSE: $0.00998$).
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/blur_0.75.png', 'Classical Denoising at t=0.75 (Optimal sigma=2.0)')">
+                            <img src="./part_a_results/blur_0.75.png" alt="Gaussian blur denoising t=0.75" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>$t = 0.75$ (Best $\sigma = 2.0$):</strong> Mild smoothing suppresses grain but softens crisp edges and object boundaries.
+                        </div>
+                    </div>
+                </div>
+                <div class="callout callout-blue">
+                    <div class="callout-title">💡 Insight: The Limits of Linear Filtering</div>
+                    Classical Gaussian smoothing acts strictly as a low-pass filter. It cannot hallucinate or infer lost high-frequency structure,
+                    fundamentally failing as noise increases. This demonstrates the necessity of learned generative priors.
+                </div>
+            </div>
+
+            <!-- Section 1.3 -->
+            <div id="a-1-3">
+                <h3 class="sub-title">1.3 One-Step Denoising with Learned Flow Velocity</h3>
+                <p>
+                    Because the flow network predicts the velocity field $\hat{v}_t = v_\theta(x_t, t, c) \approx x_1 - x_0$,
+                    and since $x_t = x_1 - (1-t)(x_1 - x_0)$, we can perform a direct one-step estimation of the clean image:
+                </p>
+                $$\hat{x}_1 = x_t + (1-t) v_\theta(x_t, t, c)$$
+                <p>
+                    We evaluate one-step denoising on our saved noisy inputs using the generic prompt <code>"a high quality photo"</code>:
+                </p>
+                <div class="grid-3">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/one_step_0.25.png', 'One-Step Denoising at t=0.25')">
+                            <img src="./part_a_results/one_step_0.25.png" alt="One-step denoising at t=0.25" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>$t = 0.25$:</strong> A large step $(1-t)=0.75$ leads to noticeable hallucinated structures and color distortion.
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/one_step_0.5.png', 'One-Step Denoising at t=0.50')">
+                            <img src="./part_a_results/one_step_0.5.png" alt="One-step denoising at t=0.50" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>$t = 0.50$:</strong> Restores clear composition and geometry, though micro-textures remain slightly smoothed (MSE: $0.00282$).
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/one_step_0.75.png', 'One-Step Denoising at t=0.75')">
+                            <img src="./part_a_results/one_step_0.75.png" alt="One-step denoising at t=0.75" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>$t = 0.75$:</strong> Step size is small ($(1-t)=0.25$); reconstruction is nearly indistinguishable from original clean image.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 1.4 -->
+            <div id="a-1-4">
+                <h3 class="sub-title">1.4 Visualizing Velocity &amp; Error Analysis</h3>
+                <p>
+                    To understand what the neural network actually computes, we isolate the predicted spatial update $(1-t)\hat{v}_t$
+                    and compare it against the ground-truth update $(1-t)v_{\mathrm{gt}} = x_1 - x_t$.
+                    We compute the per-pixel RMS error across RGB channels:
+                </p>
+                $$E_t = \sqrt{\frac{1}{3} \sum_{c \in \{R,G,B\}} \left[ (1-t) \left( \hat{v}_t^{(c)} - v_{\mathrm{gt}}^{(c)} \right) \right]^2}$$
+                <p>
+                    All velocity updates are visualized using a shared signed RGB scale centered at middle gray ($0.5$), and error heatmaps use a consistent linear scale.
+                </p>
+
+                <!-- Original Image once -->
+                <div style="max-width: 320px; margin: 20px auto;">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/velocity_original.png', 'Original Clean Reference Image')">
+                            <img src="./part_a_results/velocity_original.png" alt="Original clean image" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Original</span>
+                        </div>
+                        <div class="gallery-card-caption" style="text-align: center;">
+                            <strong>Reference Clean Image ($x_1$)</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Velocity Grids -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/velocity_0.75.png', 'Velocity Diagnostics at t=0.75')">
+                        <img src="./part_a_results/velocity_0.75.png" alt="Velocity diagnostics t=0.75" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Velocity Diagnostics at $t = 0.75$:</strong>
+                        Predicted update $(1-t)\hat{v}$ matches ground truth update $(1-t)v_{\mathrm{gt}}$ very closely.
+                        RMS error is low across the image, exhibiting faint residual energy strictly along high-frequency silhouettes.
+                    </div>
+                </div>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/velocity_0.50.png', 'Velocity Diagnostics at t=0.50')">
+                        <img src="./part_a_results/velocity_0.50.png" alt="Velocity diagnostics t=0.50" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Velocity Diagnostics at $t = 0.50$:</strong>
+                        The model accurately identifies primary geometric contours, but fine textural updates deviate from ground truth.
+                        Error begins to spread across complex surface regions.
+                    </div>
+                </div>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/velocity_0.25.png', 'Velocity Diagnostics at t=0.25')">
+                        <img src="./part_a_results/velocity_0.25.png" alt="Velocity diagnostics t=0.25" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Velocity Diagnostics at $t = 0.25$:</strong>
+                        Heavy noise obscures local details. The network predicts an update consistent with general photographic priors,
+                        leading to substantial per-pixel RMS error relative to the specific ground truth photograph.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 1.5 -->
+            <div id="a-1-5">
+                <h3 class="sub-title">1.5 Iterative Denoising with Euler Sampling</h3>
+                <p>
+                    Because the true velocity field bends along the manifold, a single linear step is inaccurate for large $(1-t)$.
+                    Instead, we use <strong>Euler integration</strong> with a small step size $h = 0.02$:
+                </p>
+                $$x_{t+h} = x_t + h \cdot v_\theta(x_t, t, c)$$
+                <p>
+                    Starting from our saved noisy input at $t_{\mathrm{start}} = 0.50$, we execute 25 Euler updates to reach $t=1.00$.
+                    Below is the integration trajectory, showing states at $t \in \{0.50, 0.60, 0.70, 0.80, 0.90, 1.00\}$:
+                </p>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/trajectory.png', 'Euler Denoising Trajectory from t=0.50 to t=1.00 (25 updates, h=0.02)')">
+                        <img src="./part_a_results/trajectory.png" alt="Euler denoising trajectory" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom Trajectory</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure 1.5.1:</strong> Euler denoising trajectory over 25 updates ($h=0.02$).
+                        Notice how the coarse silhouette clarifies first ($t=0.60-0.70$), followed by progressive synthesis of fine edges and textures ($t=0.80-1.00$).
+                    </div>
+                </div>
+
+                <h4 class="inner-title">Comparative Analysis: Classical vs. One-Step vs. Euler Sampling</h4>
+                <p>
+                    We compare all denoising paradigms on the exact same $t=0.50$ noisy input:
+                </p>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/comparison.png', 'Comparison: Original vs Gaussian Blur vs One-Step vs Iterative Euler Sampling')">
+                        <img src="./part_a_results/comparison.png" alt="Denoising methods comparison" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom Comparison</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure 1.5.2:</strong> Side-by-side comparison on $t=0.50$ noisy input.
+                        Gaussian blur is heavily degraded; one-step restores overall layout but is slightly over-smoothed;
+                        Euler sampling restores realistic micro-textures, crisp contrast, and sharp edges.
+                    </div>
+                </div>
+
+                <div class="metric-cards-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">Gaussian Blur MSE</div>
+                        <div class="metric-val">0.00998</div>
+                        <div class="metric-note">Best blur filter ($\sigma=4.0$). High error, heavy blur.</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">One-Step Flow MSE</div>
+                        <div class="metric-val">0.00282</div>
+                        <div class="metric-note">Direct linear leap. Minimizes pixel-wise L2 error.</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Euler Sampling MSE</div>
+                        <div class="metric-val">0.00339</div>
+                        <div class="metric-note">25 iterative steps ($h=0.02$). Superior perceptual sharpness!</div>
+                    </div>
+                </div>
+                <div class="callout callout-success">
+                    <div class="callout-title">🧠 The Perception-Distortion Tradeoff</div>
+                    While one-step denoising yields a slightly lower raw L2 pixel MSE, it outputs the conditional expectation $\mathbb{E}[x_1 | x_t]$,
+                    which naturally averages out high-frequency variation and blurs sharp details.
+                    Euler sampling follows the natural vector field trajectory, yielding far superior perceptual sharpness, contrast, and realistic textures!
+                </div>
+            </div>
+
+            <!-- Section 1.6 -->
+            <div id="a-1-6">
+                <h3 class="sub-title">1.6 Generating Images from Pure Noise</h3>
+                <p>
+                    By initializing at $t_{\mathrm{start}} = 0$ with pure Gaussian noise $x_0 \sim \mathcal{N}(0, I)$ and integrating across 50 Euler steps ($h=0.02$)
+                    to $t=1$, we can generate images from scratch using the prompt <code>"a high quality photo"</code>.
+                    Below are 5 sampled images generated from seeds 180 to 184:
+                </p>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/conditional_samples.png', 'Section 1.6: 5 Conditional Samples from Pure Noise (Seeds 180-184)')">
+                        <img src="./part_a_results/conditional_samples.png" alt="5 Conditional samples from noise" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom Samples</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure 1.6:</strong> Five generations from pure noise without Classifier-Free Guidance (seeds 180..184).
+                        While global structure and identifiable subjects emerge, the images suffer from low contrast, muted color palettes, and muddy textures due to unguided mode averaging.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 2.1 -->
+            <div id="a-2-1">
+                <h3 class="sub-title">2.1 Classifier-Free Guidance (CFG)</h3>
+                <p>
+                    To resolve the lack of vibrancy and poor prompt alignment in unguided generation, we implement <strong>Classifier-Free Guidance (CFG)</strong>.
+                    At each timestep $t$, we compute both a conditional velocity prediction $v_c = v_\theta(x_t, t, c)$ with <code>"a high quality photo"</code>
+                    and an unconditional velocity prediction $v_u = v_\theta(x_t, t, \emptyset)$ using the empty-string null prompt:
+                </p>
+                $$v_{\mathrm{cfg}} = v_c + w (v_c - v_u) = (1+w)v_c - w v_u$$
+                <p>
+                    Setting $w = 7.0$ and step size $h = 0.02$, we generate images using the exact same random initial noises (seeds 180–184) from Section 1.6:
+                </p>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/cfg_samples.png', 'Section 2.1: Classifier-Free Guidance Samples (w=7, Seeds 180-184)')">
+                        <img src="./part_a_results/cfg_samples.png" alt="CFG samples with w=7" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom CFG Samples</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure 2.1:</strong> Five samples generated with CFG scale $w=7$ using the identical initial noise seeds from Section 1.6.
+                        Comparing against Figure 1.6 reveals a dramatic transformation: contrast is dramatically amplified, colors become rich and saturated,
+                        and realistic high-frequency micro-textures replace hazy averaging artifacts.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3.1 -->
+            <div id="a-3-1">
+                <h3 class="sub-title">3.1 Image-to-Image Editing (SDEdit on the Flow Manifold)</h3>
+                <p>
+                    Following the SDEdit paradigm adapted to flow models, we corrupt a clean image to a starting time $t_{\mathrm{start}}$:
+                    $x_{t_{\mathrm{start}}} = (1-t_{\mathrm{start}})\epsilon + t_{\mathrm{start}}x_1$, and then integrate forward from $t_{\mathrm{start}}$ to $1$
+                    using Euler sampling with CFG ($w=7$) and the generic prompt <code>"a high quality photo"</code>.
+                    We evaluate the seven recommended starting times: <code>[0.02, 0.04, 0.06, 0.10, 0.14, 0.25, 0.50]</code>.
+                </p>
+
+                <!-- Campanile & Personal Images -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/edit_campanile.png', 'Campanile Image-to-Image Edits across 7 starting times')">
+                        <img src="./part_a_results/edit_campanile.png" alt="Campanile image edits" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>UC Berkeley Campanile:</strong> At $t=0.02-0.06$, the tower is reinvented into completely new architectural edifices.
+                        At $t=0.14-0.50$, the Campanile's distinctive geometry and clock tower features are faithfully preserved with subtle atmospheric enhancements.
+                    </div>
+                </div>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/edit_my_image_1.png', 'Personal Image 1 (Honey Bear Jar) Image-to-Image Edits across 7 starting times')">
+                        <img src="./part_a_results/edit_my_image_1.png" alt="Personal Image 1 edits" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Personal Test Image 1 (Honey Bear Jar):</strong> At low $t_{\mathrm{start}} = 0.02-0.06$, the bear silhouette is re-synthesized into novel desktop gadgets and frames. At higher $t_{\mathrm{start}} \ge 0.14$, the honey bottle's amber translucency, white cap, and label contours are faithfully preserved.
+                    </div>
+                </div>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/edit_my_image_2.png', 'Personal Image 2 (Dodgers Bobblehead) Image-to-Image Edits across 7 starting times')">
+                        <img src="./part_a_results/edit_my_image_2.png" alt="Personal Image 2 edits" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Personal Test Image 2 (Dodgers Bobblehead):</strong> At low starting times, the blue-and-white color palette inspires diverse blue sports items and decorative figures, while at $t_{\mathrm{start}} = 0.25-0.50$, the baseball cap, pose, and tabletop background cleanly re-emerge.
+                    </div>
+                </div>
+
+                <h4 class="inner-title">Editing Hand-Drawn and Web Images</h4>
+                <p>
+                    Non-photorealistic inputs (such as crude hand sketches or digital illustrations) sit far outside the manifold of natural photographs.
+                    Noising and denoising forces these inputs onto the natural image manifold, synthesizing photorealistic renderings from sketches!
+                </p>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/edit_drawing_1.png', 'Hand Drawing 1 (Sailboat): Sketch-to-Photo projection')">
+                        <img src="./part_a_results/edit_drawing_1.png" alt="Hand drawing 1 edits" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Hand Drawing 1 (Sailboat):</strong> A minimalist sketch of a sailboat with a brown hull and red sails. At starting times $t = 0.04-0.10$, the flow model projects the crude line strokes onto the natural image manifold, hallucinating realistic geometric objects and craft before locking into the hand-drawn sketch outline at higher $t$.
+                    </div>
+                </div>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/edit_drawing_2.png', 'Hand Drawing 2 (Tree on a Hill): Sketch-to-Photo projection')">
+                        <img src="./part_a_results/edit_drawing_2.png" alt="Hand drawing 2 edits" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Hand Drawing 2 (Tree on a Hill):</strong> A simple line drawing of a tree atop a green hill. At lower starting times ($t = 0.04-0.14$), the model projects the green canopy outline into realistic foliage textures and structural forms before adhering to the hand-drawn lines at $t = 0.25-0.50$.
+                    </div>
+                </div>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/edit_web_image.png', 'Web Image (Cal Football Helmet) Edits across 7 starting times')">
+                        <img src="./part_a_results/edit_web_image.png" alt="Web image edits" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Web Image (Cal Football Helmet):</strong> Starting from an online photograph of a Cal Golden Bears football helmet, the model hallucinates alternate industrial and sporting equipment at low $t_{\mathrm{start}}$, before converging toward the glossy yellow shell and facemask geometry at $t \ge 0.14$.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3.2 -->
+            <div id="a-3-2">
+                <h3 class="sub-title">3.2 Text-Guided Image Editing</h3>
+                <p>
+                    By replacing the generic prompt with a targeted descriptive prompt, we steer the flow trajectory toward specific artistic styles or concepts.
+                    We evaluate the same 7 starting times <code>[0.02, 0.04, 0.06, 0.10, 0.14, 0.25, 0.50]</code>:
+                </p>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/text_edit_campanile.png', 'Campanile -> a photograph of a rocket on a launch pad')">
+                        <img src="./part_a_results/text_edit_campanile.png" alt="Text-guided edit of Campanile to rocket" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Campanile $\to$ <em>"a photograph of a rocket on a launch pad"</em>:</strong>
+                        At $t=0.04-0.10$, the vertical geometry of the bell tower naturally transmutes into a cylindrical rocket body surrounded by launch pad scaffolding and exhaust plumes!
+                    </div>
+                </div>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/text_edit_my_image_1.png', 'Personal Image 1 (Honey Bear Jar) -> a watercolor painting of the scene with soft lighting')">
+                        <img src="./part_a_results/text_edit_my_image_1.png" alt="Text-guided edit of Personal Image 1 (Honey Bear Jar) to watercolor" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Personal Image 1 (Honey Bear Jar) $\to$ <em>"a watercolor painting of the scene with soft lighting"</em>:</strong>
+                        Diffuse watercolor pigments, soft paper bleed, and artistic washes stylize the honey bear bottle while preserving the overall contours and warm amber tones of the jar.
+                    </div>
+                </div>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/text_edit_my_image_2.png', 'Personal Image 2 (Dodgers Bobblehead) -> an oil painting of the subject with vibrant colors')">
+                        <img src="./part_a_results/text_edit_my_image_2.png" alt="Text-guided edit of Personal Image 2 (Dodgers Bobblehead) to oil painting" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Personal Image 2 (Dodgers Bobblehead) $\to$ <em>"an oil painting of the subject with vibrant colors"</em>:</strong>
+                        Rich impasto brush strokes and saturated palette dynamics emerge, creating a tactile canvas texture across the bobblehead figurine while retaining its characteristic blue and white jersey and cap.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3.3 -->
+            <div id="a-3-3">
+                <h3 class="sub-title">3.3 Visual Anagrams (Multi-View Optical Illusions)</h3>
+                <p>
+                    We can generate captivating optical illusions that reveal completely different scenes when rotated $180^\circ$.
+                    At each Euler integration step, we compute the guided velocity under prompt $p_1$, flip the current state $180^\circ$,
+                    compute the guided velocity under prompt $p_2$, rotate it back, and take the average velocity:
+                </p>
+                $$v_1 = v_{\mathrm{cfg}}(x_t, t, p_1)$$
+                $$v_2 = \mathrm{rotate}_{180^\circ} \left( v_{\mathrm{cfg}}(\mathrm{rotate}_{180^\circ}(x_t), t, p_2) \right)$$
+                $$v = \frac{1}{2} (v_1 + v_2)$$
+
+                <!-- Pair 1 -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/anagram_views_0.png', 'Visual Anagram 1: Old Man vs Campfire (Upright and Rotated Views)')">
+                        <img src="./part_a_results/anagram_views_0.png" alt="Visual anagram 1 views" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Static Views</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Illusion 1:</strong> Upright: <em>"an oil painting of an old man"</em> $\longleftrightarrow$ Flipped $180^\circ$: <em>"an oil painting of people around a campfire"</em>.
+                    </div>
+                </div>
+
+                <!-- Interactive Flip Card 1 -->
+                <div class="anagram-interactive-container">
+                    <h4 style="margin-bottom: 12px; color: var(--accent-primary);">✨ Interactive Anagram 1 (Hover or Click to Rotate 180°)</h4>
+                    <div class="anagram-flipper" id="flipper-1"
+                         onclick="toggleFlip('flipper-1')"
+                         onmouseenter="handleAnagramHover('flipper-1', true)"
+                         onmouseleave="handleAnagramHover('flipper-1', false)">
+                        <div class="anagram-img-box">
+                            <img src="./part_a_results/anagram_0.png" alt="Interactive visual anagram 1">
+                        </div>
+                    </div>
+                    <div class="anagram-caption-box">
+                        <div class="anagram-prompt" id="cap-1"><span style="color:var(--accent-primary);">Upright:</span> an oil painting of an old man</div>
+                        <div class="anagram-subprompt">Hover to peek &bull; Click image or button to lock rotation</div>
+                    </div>
+                    <button class="flip-btn" onclick="toggleFlip('flipper-1')">🔄 Rotate 180° (Toggle)</button>
+                </div>
+
+                <!-- Pair 2 -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_a_results/anagram_views_1.png', 'Visual Anagram 2: Snowy Mountain Village vs Horse')">
+                        <img src="./part_a_results/anagram_views_1.png" alt="Visual anagram 2 views" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Static Views</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Illusion 2:</strong> Upright: <em>"a lithograph of a snowy mountain village"</em> $\longleftrightarrow$ Flipped $180^\circ$: <em>"a lithograph of a horse"</em>.
+                    </div>
+                </div>
+
+                <!-- Interactive Flip Card 2 -->
+                <div class="anagram-interactive-container">
+                    <h4 style="margin-bottom: 12px; color: var(--accent-primary);">✨ Interactive Anagram 2 (Hover or Click to Rotate 180°)</h4>
+                    <div class="anagram-flipper" id="flipper-2"
+                         onclick="toggleFlip('flipper-2')"
+                         onmouseenter="handleAnagramHover('flipper-2', true)"
+                         onmouseleave="handleAnagramHover('flipper-2', false)">
+                        <div class="anagram-img-box">
+                            <img src="./part_a_results/anagram_1.png" alt="Interactive visual anagram 2">
+                        </div>
+                    </div>
+                    <div class="anagram-caption-box">
+                        <div class="anagram-prompt" id="cap-2"><span style="color:var(--accent-primary);">Upright:</span> a lithograph of a snowy mountain village</div>
+                        <div class="anagram-subprompt">Hover to peek &bull; Click image or button to lock rotation</div>
+                    </div>
+                    <button class="flip-btn" onclick="toggleFlip('flipper-2')">🔄 Rotate 180° (Toggle)</button>
+                </div>
+            </div>
+
+            <!-- Section 3.4 -->
+            <div id="a-3-4">
+                <h3 class="sub-title">3.4 Hybrid Images (Factorized Frequency Flow)</h3>
+                <p>
+                    Extending our frequency decomposition from Project 2, we generate <strong>hybrid images</strong> by combining low frequencies from one prompt velocity
+                    with high frequencies from another prompt velocity during every Euler update:
+                </p>
+                $$v = f_{\mathrm{lowpass}}(v_1) + v_2 - f_{\mathrm{lowpass}}(v_2)$$
+                <p>
+                    where $f_{\mathrm{lowpass}}$ is a 2D Gaussian filter with $\sigma = 16$ and kernel size $265 \times 265$.
+                    Prompt $p_1$ dictates the dominant structure when viewed from afar, while prompt $p_2$ dominates fine detail upon close inspection.
+                </p>
+
+                <!-- Hybrid 1 -->
+                <div class="hybrid-interactive-box">
+                    <h4 style="color: var(--accent-primary); margin-bottom: 8px;">Hybrid 1: Skull (Distant) + Waterfall (Close-Up)</h4>
+                    <p style="text-align: center; max-width: 700px; font-size: 0.9rem;">
+                        <strong>Low-Frequency / Distant:</strong> <em>"a lithograph of a skull"</em> &bull;
+                        <strong>High-Frequency / Close:</strong> <em>"a lithograph of a waterfall"</em>
+                    </p>
+                    <div class="hybrid-display-area">
+                        <div class="hybrid-view">
+                            <span class="hybrid-view-label">Close-Up Perception (Full Size)</span>
+                            <div class="hybrid-frame-large" onclick="openModal('./part_a_results/hybrid_0.png', 'Hybrid 1: Full resolution (Waterfall close-up, Skull from afar)')" style="cursor: pointer;">
+                                <img src="./part_a_results/hybrid_0.png" alt="Hybrid 1 full size" loading="lazy">
+                            </div>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Cascading waterfalls and rocky ledges</span>
+                        </div>
+                        <div class="hybrid-view">
+                            <span class="hybrid-view-label">Distant Perception (Reduced Scale)</span>
+                            <div class="hybrid-frame-small" onclick="openModal('./part_a_results/hybrid_0.png', 'Hybrid 1: Skull visible from a distance')" style="cursor: pointer;">
+                                <img src="./part_a_results/hybrid_0.png" alt="Hybrid 1 reduced scale" loading="lazy">
+                            </div>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Skull shape emerges clearly!</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hybrid 2 -->
+                <div class="hybrid-interactive-box">
+                    <h4 style="color: var(--accent-primary); margin-bottom: 8px;">Hybrid 2: Cat (Distant) + Forest (Close-Up)</h4>
+                    <p style="text-align: center; max-width: 700px; font-size: 0.9rem;">
+                        <strong>Low-Frequency / Distant:</strong> <em>"a lithograph of a cat"</em> &bull;
+                        <strong>High-Frequency / Close:</strong> <em>"a lithograph of a forest"</em>
+                    </p>
+                    <div class="hybrid-display-area">
+                        <div class="hybrid-view">
+                            <span class="hybrid-view-label">Close-Up Perception (Full Size)</span>
+                            <div class="hybrid-frame-large" onclick="openModal('./part_a_results/hybrid_1.png', 'Hybrid 2: Full resolution (Forest close-up, Cat from afar)')" style="cursor: pointer;">
+                                <img src="./part_a_results/hybrid_1.png" alt="Hybrid 2 full size" loading="lazy">
+                            </div>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Dense forest trees and wilderness foliage</span>
+                        </div>
+                        <div class="hybrid-view">
+                            <span class="hybrid-view-label">Distant Perception (Reduced Scale)</span>
+                            <div class="hybrid-frame-small" onclick="openModal('./part_a_results/hybrid_1.png', 'Hybrid 2: Cat silhouette visible from afar')" style="cursor: pointer;">
+                                <img src="./part_a_results/hybrid_1.png" alt="Hybrid 2 reduced scale" loading="lazy">
+                            </div>
+                            <span style="font-size: 0.8rem; color: var(--text-muted);">Feline facial contours pop out!</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ======================================================== -->
+        <!-- PART B -->
+        <!-- ======================================================== -->
+        <section class="section-block" id="part-b">
+            <div class="part-header">
+                <div class="part-tag">Part B</div>
+                <h2 class="section-title">Flow Matching from Scratch!</h2>
+                <p class="section-desc">
+                    Designing and training generative neural networks from scratch in PyTorch on the MNIST dataset.
+                    We build multi-scale UNets, train single-step denoisers, benchmark out-of-distribution noise performance,
+                    derive the mathematical explanation for denoising pure noise, and incorporate time and class conditioning via modulated FCBlocks to generate clean digits with Classifier-Free Guidance.
+                </p>
+            </div>
+
+            <!-- Section B 1.1 -->
+            <div id="b-1-1">
+                <h3 class="sub-title">Part 1.1: Implementing the UNet Architecture</h3>
+                <p>
+                    We construct a modular convolutional UNet featuring:
+                </p>
+                <ul>
+                    <li><strong>ConvBlock:</strong> <code>Conv2d(in, out, 3, padding=1) &rarr; BatchNorm2d &rarr; GELU</code>.</li>
+                    <li><strong>DownBlock:</strong> <code>AvgPool2d(2) &rarr; ConvBlock &rarr; ConvBlock</code>.</li>
+                    <li><strong>UpBlock:</strong> <code>ConvTranspose2d(in, out, 2, stride=2) &rarr; Concatenate skip connection &rarr; ConvBlock &rarr; ConvBlock</code>.</li>
+                    <li><strong>Flatten &amp; Unflatten:</strong> Bottleneck pooling and dimension reshaping for conditioning signal injection.</li>
+                    <li>Default hidden channel dimension: $D = 128$.</li>
+                </ul>
+            </div>
+
+            <!-- Section B 1.2 -->
+            <div id="b-1-2">
+                <h3 class="sub-title">Part 1.2: Using the UNet to Train a Denoiser</h3>
+                <p>
+                    To train an unconditional single-step denoiser, we corrupt clean MNIST training digits $z \in [0, 1]$ with additive Gaussian noise $\epsilon \sim \mathcal{N}(0, I)$
+                    at varying standard deviations $\sigma$:
+                </p>
+                $$z_{\mathrm{noisy}} = \mathrm{clamp}(z + \sigma \epsilon, 0.0, 1.0)$$
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/1.2.png', 'Part 1.2: MNIST digits corrupted across noise levels sigma in [0.0, 1.0]')">
+                        <img src="./part_b_results/1.2.png" alt="MNIST digits at noise levels" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure B.1.2:</strong> Ten MNIST test digits corrupted across noise levels $\sigma \in [0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0]$.
+                        As $\sigma$ increases past $0.5$, the digit strokes rapidly submerge beneath Gaussian noise.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section B 1.2.1 -->
+            <div id="b-1-2-1">
+                <h3 class="sub-title">Part 1.2.1: Denoiser Training &amp; Evaluation</h3>
+                <p>
+                    We train our unconditional UNet ($D=128$) to denoise digits corrupted specifically at $\sigma = 0.5$ using Adam optimizer
+                    (learning rate $10^{-4}$, batch size 256, 5 epochs) minimizing MSE reconstruction loss:
+                </p>
+                $$\mathcal{L} = \mathbb{E}_{z, \epsilon} \left[ \| \mathrm{UNet}(z + 0.5\epsilon) - z \|^2 \right]$$
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/1.2.1 - loss.png', 'Training loss curve for single-step denoising UNet over 5 epochs')">
+                        <img src="./part_b_results/1.2.1 - loss.png" alt="Denoising UNet loss plot" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom Loss</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure B.1.2.1 (a):</strong> Training loss curve over 5 epochs. The MSE loss plunges sharply within the first 200 optimizer steps
+                        and stabilizes near $\sim 0.02$.
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/1.2.1 - epoch 1.png', 'Denoised test set digits after Epoch 1')">
+                            <img src="./part_b_results/1.2.1 - epoch 1.png" alt="Denoised digits epoch 1" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>Denoising at Epoch 1 ($\sigma = 0.5$):</strong> Clean digit outlines emerge immediately, with slight boundary fuzziness.
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/1.2.1 - epoch 5.png', 'Denoised test set digits after Epoch 5')">
+                            <img src="./part_b_results/1.2.1 - epoch 5.png" alt="Denoised digits epoch 5" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>Denoising at Epoch 5 ($\sigma = 0.5$):</strong> Reconstructions become crisp, clean, and noise-free, restoring stroke continuity.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section B 1.2.2 -->
+            <div id="b-1-2-2">
+                <h3 class="sub-title">Part 1.2.2: Out-of-Distribution (OOD) Testing</h3>
+                <p>
+                    Our denoiser was trained exclusively on digits corrupted with $\sigma = 0.5$.
+                    We now evaluate its generalization capability on unseen noise levels $\sigma \in [0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0]$:
+                </p>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/1.2.2_summary.png', 'Out-of-Distribution Testing across sigma in [0.0, 1.0]')">
+                        <img src="./part_b_results/1.2.2_summary.png" alt="OOD testing summary table" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom Summary</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure B.1.2.2:</strong> Out-of-distribution performance across $\sigma \in [0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0]$.
+                        For each noise level, the top row shows the corrupted input and the bottom row shows the UNet's single-step reconstruction.
+                    </div>
+                </div>
+
+                <div class="callout callout-blue">
+                    <div class="callout-title">📊 Detailed OOD Generalization Analysis</div>
+                    <ul>
+                        <li><strong>Under-noised regime ($\sigma < 0.5$):</strong> When fed clean or lightly noised digits ($\sigma = 0.0, 0.2$), the denoiser still expects severe high-frequency noise. Consequently, it removes high frequencies, slightly blurring sharp corners and thinning strokes.</li>
+                        <li><strong>Matched regime ($\sigma = 0.5$):</strong> Denoising performance is optimal; the network strikes an ideal balance between noise suppression and edge preservation.</li>
+                        <li><strong>Over-noised regime ($\sigma > 0.5$):</strong> At $\sigma = 0.8$ and $1.0$, Gaussian noise obliterates digit topology. The network outputs faint, ghostly shapes or generic loop fragments with high residual artifacts, illustrating out-of-distribution failure.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Section B 1.2.3 -->
+            <div id="b-1-2-3">
+                <h3 class="sub-title">Part 1.2.3: Denoising Pure Noise &amp; The Bayes Optimal Predictor</h3>
+                <p>
+                    What happens if we train a fresh UNet ($D=128$) where the input is <em>pure Gaussian noise</em> $x_0 \sim \mathcal{N}(0, I)$
+                    and the target is a clean MNIST digit $x_1$?
+                </p>
+
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/1.2.3 - loss.png', 'Loss curve for denoising pure noise')">
+                        <img src="./part_b_results/1.2.3 - loss.png" alt="Pure noise denoising loss" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom Loss</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure B.1.2.3 (a):</strong> Training loss curve for denoising pure noise. Loss plateaus quickly around $\sim 0.065$, unable to decrease further.
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/1.2.3 - epoch 1.png', 'Pure noise denoising at Epoch 1')">
+                            <img src="./part_b_results/1.2.3 - epoch 1.png" alt="Pure noise denoising epoch 1" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>Epoch 1:</strong> An ambiguous, glowing circular blob appears across all outputs.
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/1.2.3 - epoch 5.png', 'Pure noise denoising at Epoch 5')">
+                            <img src="./part_b_results/1.2.3 - epoch 5.png" alt="Pure noise denoising epoch 5" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>Epoch 5:</strong> All independent pure noise inputs converge to the exact same fuzzy, centered "average digit" centroid.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="math-box">
+                    <div class="math-title">Mathematical Derivation: Why Pure Noise Denoising Converges to the Dataset Mean</div>
+                    <p>
+                        Pure random Gaussian noise $x_0$ carries zero mutual information with the clean target digit $x_1$:
+                        $p(x_1 \mid x_0) = p(x_1)$.
+                    </p>
+                    <p>
+                        Under Mean Squared Error (L2) loss, the optimal Bayes estimator $\hat{x}(x_0)$ minimizing expected loss is the conditional expectation:
+                    </p>
+                    $$\hat{x}(x_0) = \arg\min_{\hat{x}} \mathbb{E}_{x_1 \mid x_0} \left[ \| \hat{x} - x_1 \|^2 \right] = \mathbb{E}[x_1 \mid x_0] = \mathbb{E}[x_1]$$
+                    <p>
+                        Because $x_0$ provides no conditioning clue as to which digit $(0-9)$ was intended, any sharp digit guess (e.g. predicting a "1" when the true target was a "0") would incur massive squared error.
+                        The mathematical optimum that minimizes overall loss across the entire dataset is the <strong>pixel-wise mean of all 60,000 MNIST training images</strong>.
+                        This produces the characteristic glowing "0"/"8"-like centroid blob!
+                    </p>
+                </div>
+            </div>
+
+            <!-- Section B 2.1 -->
+            <div id="b-2-1">
+                <h3 class="sub-title">Part 2.1: Adding Time Conditioning to the UNet</h3>
+                <p>
+                    To enable multi-step continuous generation, the model must know the current timestep $t \in [0, 1]$.
+                    We construct a dedicated <code>FCBlock</code>:
+                </p>
+                <pre><code>FCBlock: Linear(F_in, F_out) &rarr; GELU &rarr; Linear(F_out, F_out)</code></pre>
+                <p>
+                    The scalar timestep $t$ is mapped into two modulation vectors $t_1, t_2$ which modulate the unflatten and upsampling blocks via feature multiplication:
+                </p>
+                $$\mathrm{unflatten} \leftarrow \mathrm{unflatten} \cdot t_1$$
+                $$\mathrm{up}_1 \leftarrow \mathrm{up}_1 \cdot t_2$$
+            </div>
+
+            <!-- Section B 2.2 -->
+            <div id="b-2-2">
+                <h3 class="sub-title">Part 2.2: Training the Time-Conditioned Flow Matching Model</h3>
+                <p>
+                    We train our Time-Conditioned UNet ($D=128$) to regress the vector field flow:
+                    given random clean digits $x_1$ and pure Gaussian noise $x_0 \sim \mathcal{N}(0, I)$, we sample random $t \sim \mathcal{U}(0, 1)$,
+                    construct $x_t = (1-t)x_0 + t x_1$, and train the network to predict the target velocity $v = x_1 - x_0$.
+                    We train for 10 epochs with Adam (initial learning rate $10^{-2}$, batch size 256) and an exponential learning rate decay scheduler
+                    $\gamma = 0.1^{1/10} \approx 0.7943$:
+                </p>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/2.2.png', 'Training loss curve for Time-Conditioned UNet over 10 epochs')">
+                        <img src="./part_b_results/2.2.png" alt="Time-conditioned UNet loss" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom Loss</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure B.2.2:</strong> Training loss curve for the Time-Conditioned UNet over 10 epochs.
+                        Flow matching velocity regression converges smoothly and steadily across all 2,350 optimizer steps.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section B 2.3 -->
+            <div id="b-2-3">
+                <h3 class="sub-title">Part 2.3: Sampling from the Time-Conditioned UNet</h3>
+                <p>
+                    Using Algorithm B.2, we sample generated digits starting from pure noise $x_0 \sim \mathcal{N}(0, I)$ at $t=0$
+                    and integrate across 50 Euler timesteps to $t=1$:
+                    $x_{t+\Delta t} = x_t + \Delta t \cdot u_\theta(x_t, t)$.
+                </p>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/2.3.png', 'Generated MNIST digits from Time-Conditioned UNet')">
+                        <img src="./part_b_results/2.3.png" alt="Time-conditioned sampling results" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom Samples</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure B.2.3:</strong> Generated digits from the time-conditioned model across 50 integration steps.
+                        Legible digits (0s, 1s, 6s, 8s, 9s) clearly emerge from pure noise!
+                        However, without class guidance, some samples exhibit hybrid stroke topologies where multiple digit classes compete.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section B 2.4 -->
+            <div id="b-2-4">
+                <h3 class="sub-title">Part 2.4: Adding Class Conditioning to the UNet</h3>
+                <p>
+                    To achieve precise control over which digit is synthesized, we condition the UNet on digit classes $c \in \{0, \dots, 9\}$
+                    encoded as 10-dimensional one-hot vectors.
+                    We introduce class-conditioning <code>FCBlock</code>s, and inject conditioning via combined affine modulation:
+                </p>
+                $$\mathrm{unflatten} \leftarrow c_1 \odot \mathrm{unflatten} + t_1$$
+                $$\mathrm{up}_1 \leftarrow c_2 \odot \mathrm{up}_1 + t_2$$
+                <p>
+                    To enable Classifier-Free Guidance at sampling time, we implement class dropout with probability $p_{\mathrm{uncond}} = 0.1$,
+                    setting the one-hot vector $c = \mathbf{0}$ during training.
+                </p>
+            </div>
+
+            <!-- Section B 2.5 -->
+            <div id="b-2-5">
+                <h3 class="sub-title">Part 2.5: Training Class-Conditioned UNet &amp; Learning Rate Scheduler Ablation</h3>
+                <p>
+                    We train the Class-Conditioned UNet for 10 epochs. We also conduct an ablation study investigating whether the exponential learning rate
+                    scheduler can be removed while maintaining training stability and generative fidelity.
+                </p>
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/2.5 - scheduler.png', 'Training loss curve with Exponential LR Scheduler')">
+                            <img src="./part_b_results/2.5 - scheduler.png" alt="Training loss with scheduler" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>With Exponential Scheduler:</strong> Initial LR $10^{-2}$, decaying by $\gamma = 0.1^{1/10}$ each epoch.
+                            Early aggressive steps give rapid initial progress, followed by fine annealing.
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/2.5 - no scheduler.png', 'Training loss curve without Scheduler (Constant LR 1e-3)')">
+                            <img src="./part_b_results/2.5 - no scheduler.png" alt="Training loss without scheduler" loading="lazy">
+                            <span class="img-zoom-hint">🔍 Zoom</span>
+                        </div>
+                        <div class="gallery-card-caption">
+                            <strong>Without Scheduler:</strong> Constant learning rate adjusted to $10^{-3}$.
+                            Produces stable, smooth, monotonic loss reduction throughout all 10 epochs without divergence.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="callout callout-purple">
+                    <div class="callout-title">⚙️ Analysis: How We Compensated for Removing the LR Scheduler</div>
+                    <p>
+                        When training with the exponential scheduler, the model starts at an aggressive initial learning rate of $10^{-2}$ and anneals down to $10^{-3}$.
+                        If one simply removes the scheduler while maintaining a high constant learning rate ($10^{-2}$), gradient steps remain excessively large in late epochs,
+                        causing the optimizer to overshoot local minima and oscillate or diverge.
+                    </p>
+                    <p>
+                        To compensate for the loss of the scheduler, <strong>we lowered the fixed learning rate from $10^{-2}$ to $10^{-3}$</strong>.
+                        This conservative learning rate prevents late-stage gradient instability.
+                        The trade-off is that training ramps up slightly more gradually in the first two epochs, but avoids oscillations and maintains stable convergence,
+                        yielding equivalent digit generation quality without the added complexity of a scheduler.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Section B 2.6 -->
+            <div id="b-2-6">
+                <h3 class="sub-title">Part 2.6: Sampling with Classifier-Free Guidance</h3>
+                <p>
+                    With both time and class conditioning established, we sample using Classifier-Free Guidance with guidance scale $\gamma = 5.0$
+                    over 300 Euler steps:
+                </p>
+                $$v = (1 + \gamma) u_\theta(x_t, t, c) - \gamma u_\theta(x_t, t, \emptyset)$$
+                <p>
+                    We generate four independent instances for each digit class from $0$ to $9$ (40 digits total):
+                </p>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openModal('./part_b_results/2.6.png', 'Part 2.6: Class-conditioned MNIST generation with CFG scale 5.0 (4 instances per digit 0-9)')">
+                        <img src="./part_b_results/2.6.png" alt="Class-conditioned generated digits" loading="lazy">
+                        <span class="img-zoom-hint">🔍 Zoom Generated Digits</span>
+                    </div>
+                    <div class="gallery-card-caption">
+                        <strong>Figure B.2.6:</strong> Class-conditioned generation with CFG scale $\gamma = 5.0$ (4 instances each for digits 0 through 9).
+                        Every digit class is rendered with distinct, unmistakable typography, clean stroke thickness, zero class confusion, and high contrast!
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Conclusion Card -->
+        <section class="section-block">
+            <h3 class="sub-title">Key Takeaways &amp; Reflections</h3>
+            <p>
+                Across this project, we experienced both ends of the continuous generative modeling spectrum:
+            </p>
+            <ul>
+                <li><strong>Straight Paths Over Curvature:</strong> Flow matching straight probability paths ($x_t = (1-t)x_0 + t x_1$) drastically simplify velocity regression and make Euler numerical integration stable and rapid.</li>
+                <li><strong>The Indispensability of CFG:</strong> Classifier-Free Guidance is the key mechanism that converts muddy, mode-averaged outputs into crisp, high-contrast, visually compelling samples—both for large-scale text-to-image models (PixNerd) and for custom-trained UNets on MNIST.</li>
+                <li><strong>Manifold Projection for Creative Control:</strong> SDEdit-style noise interpolation provides an intuitive continuum between fidelity and creative reimagination, enabling sketch-to-photo synthesis, seamless style transfer, multi-view visual anagrams, and frequency hybrid illusions.</li>
+            </ul>
+        </section>
+    </main>
+
+    <!-- Lightbox Modal -->
+    <div class="modal" id="imageModal" onclick="closeModal()">
+        <span class="modal-close" onclick="closeModal()">&times;</span>
+        <img class="modal-content" id="modalImg" alt="Enlarged view">
+        <div class="modal-caption" id="modalCaption"></div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-links">
+                <a href="../index.html">Portfolio Home</a>
+                <a href="../0/index.html">Project 0</a>
+                <a href="../1/index.html">Project 1</a>
+                <a href="../2/index.html">Project 2</a>
+                <a href="https://github.com/ChrisSong214" target="_blank" rel="noopener noreferrer">GitHub</a>
+                <a href="https://cal-cs180.github.io/fa26/" target="_blank" rel="noopener noreferrer">CS180 Course Page</a>
+            </div>
+            <p>&copy; <span id="current-year"></span> Chris Song &middot; UC Berkeley &middot; Computer Science &amp; Statistics</p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+        document.getElementById('current-year').textContent = new Date().getFullYear();
+
+        // Theme Toggle
+        const themeBtn = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const themeText = document.getElementById('theme-text');
+
+        const storedTheme = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+        if (storedTheme === 'light' || (!storedTheme && !prefersDark)) {
+            document.documentElement.setAttribute('data-theme', 'light');
+            themeIcon.textContent = '🌙';
+            themeText.textContent = 'Dark';
+        } else {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            themeIcon.textContent = '☀️';
+            themeText.textContent = 'Light';
+        }
+
+        themeBtn.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            if (currentTheme === 'light') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+                themeIcon.textContent = '☀️';
+                themeText.textContent = 'Light';
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+                localStorage.setItem('theme', 'light');
+                themeIcon.textContent = '🌙';
+                themeText.textContent = 'Dark';
+            }
+        });
+
+        // Lightbox Modal
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImg');
+        const modalCaption = document.getElementById('modalCaption');
+
+        function openModal(src, caption) {
+            modal.classList.add('open');
+            modalImg.src = src;
+            modalCaption.textContent = caption;
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            modal.classList.remove('open');
+            document.body.style.overflow = 'auto';
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('open')) {
+                closeModal();
+            }
+        });
+
+        // Interactive Anagram Flipper with Hover Peek + Click Lock
+        const anagramStates = {
+            'flipper-1': {
+                locked: false,
+                hovered: false,
+                captionId: 'cap-1',
+                upright: 'an oil painting of an old man',
+                flipped: 'an oil painting of people around a campfire'
+            },
+            'flipper-2': {
+                locked: false,
+                hovered: false,
+                captionId: 'cap-2',
+                upright: 'a lithograph of a snowy mountain village',
+                flipped: 'a lithograph of a horse'
+            }
+        };
+
+        function updateAnagramDisplay(flipperId, shouldBeFlipped) {
+            const flipper = document.getElementById(flipperId);
+            const state = anagramStates[flipperId];
+            if (!flipper || !state) return;
+            const caption = document.getElementById(state.captionId);
+            if (shouldBeFlipped) {
+                flipper.classList.add('flipped');
+                if (caption) {
+                    caption.style.opacity = '0';
+                    setTimeout(() => {
+                        caption.innerHTML = '<span style="color:var(--accent-secondary);">Rotated 180°:</span> ' + state.flipped;
+                        caption.style.opacity = '1';
+                    }, 180);
+                }
+            } else {
+                flipper.classList.remove('flipped');
+                if (caption) {
+                    caption.style.opacity = '0';
+                    setTimeout(() => {
+                        caption.innerHTML = '<span style="color:var(--accent-primary);">Upright:</span> ' + state.upright;
+                        caption.style.opacity = '1';
+                    }, 180);
+                }
+            }
+        }
+
+        function toggleFlip(flipperId) {
+            const state = anagramStates[flipperId];
+            if (!state) return;
+            state.locked = !state.locked;
+            updateAnagramDisplay(flipperId, state.locked);
+        }
+
+        function handleAnagramHover(flipperId, isEntering) {
+            const state = anagramStates[flipperId];
+            if (!state || state.locked) return;
+            state.hovered = isEntering;
+            updateAnagramDisplay(flipperId, isEntering);
+        }
+    </script>
+</body>
+
+</html>

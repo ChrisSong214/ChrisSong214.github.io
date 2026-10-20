@@ -1,0 +1,56 @@
+/* Shared sizing for the assignment pages; keep the original exercise structure. */
+html { font-size: 18px; }
+body {
+  box-sizing: border-box;
+  width: 100%; max-width: 1100px;
+  margin: 0 auto; padding: 28px 28px 48px;
+  font-size: 18px; line-height: 1.65;
+  overflow-wrap: break-word;
+}
+h1 { font-size: 28px; line-height: 1.3; margin: 32px 0 20px; }
+h2 { font-size: 24px; margin: 28px 0 16px; }
+h3 { font-size: 21px; line-height: 1.4; margin: 24px 0 14px; }
+h4 { font-size: 19px; line-height: 1.4; margin: 22px 0 12px; }
+body > h1:first-of-type { margin-top: 16px; }
+body > h1:first-of-type img { width: 76px; height: auto; padding-right: 12px; }
+img, video { max-width: 100%; height: auto; }
+pre { max-width: 100%; overflow-x: auto; white-space: pre; font-size: 15px; }
+pre code { display: block; overflow-wrap: normal; }
+mjx-container { max-width: 100% !important; min-width: 0 !important; overflow-x: auto; overflow-y: hidden; }
+mjx-container[display="true"] { display: block !important; width: 100%; }
+code { font-size: .9em; }
+.image-container {
+  width: 100%; max-width: 100%; flex-wrap: wrap; gap: 20px;
+  margin: 24px auto; align-items: flex-start;
+}
+.image-container > div {
+  box-sizing: border-box; flex: 1 1 180px;
+  width: auto; min-width: 0; max-width: 240px; padding: 0;
+}
+.image-container:has(.model-result) > div { flex-basis: 360px; max-width: 100%; }
+.image-container p { font-size: 15px; }
+.image-container > div { overflow: hidden; }
+.image-container > div > a > img { aspect-ratio: 1; object-fit: contain; }
+.caption-container { min-height: 0; padding: 8px 0 0; }
+.caption-container .caption-default { position: static; opacity: 1 !important; transition: none; }
+.caption-container .caption-transform { display: none; }
+.rotation-frame { width: 100%; aspect-ratio: 1; overflow: hidden; }
+.rotation-frame img { width: 100%; height: 100%; object-fit: contain; }
+.model-result { margin: 24px auto; max-width: 920px; text-align: center; }
+.model-result .result-view { display: block; max-width: 100%; overflow-x: auto; }
+.model-result img { display: block; width: 100%; height: auto; margin: auto; }
+.model-result figcaption { margin-top: 10px; font-size: 15px; line-height: 1.5; color: #586574; }
+.model-result img[src*="hybrid_"] { max-width: 512px; }
+@media (max-width: 650px) {
+  html { font-size: 16px; }
+  body { padding: 18px 16px 32px; font-size: 16px; }
+  h1 { font-size: 25px; }
+  h2 { font-size: 22px; }
+  h3 { font-size: 20px; }
+  h4 { font-size: 18px; }
+  .image-container { gap: 18px 12px; }
+  .image-container > div { flex-basis: 140px; max-width: calc(50% - 6px); }
+  .image-container:has(.model-result) > div { flex-basis: 100%; max-width: 100%; }
+  .column { float: none; width: 100%; }
+  .model-result { margin: 20px 0; }
+}

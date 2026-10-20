@@ -1,0 +1,23 @@
+{
+  "group": "all",
+  "seed": 180,
+  "step_size": 0.02,
+  "cfg_w": 7,
+  "model": "MCG-NJU/PixNerd-XXL-P16-T2I",
+  "revision": "9fa8836b553976b88a3b27649ed1628499e02bf9",
+  "text_revision": "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e",
+  "gpu": "Tesla T4",
+  "visible_devices": null,
+  "torch": "2.11.0+cu130",
+  "own_image_path": "/content/drive/MyDrive/Colab Notebooks/180/proj3/my_image_1.png",
+  "reconstruction_mse": {
+    "blur": 0.00997757539153099,
+    "one_step": 0.002818616107106209,
+    "euler": 0.0033918828703463078
+  },
+  "euler_checks": "50 full steps, 25 half steps, shortened final step passed",
+  "cfg_zero_check": true,
+  "rotation_involution_check": true,
+  "hybrid_lowpass_sigma": 16,
+  "peak_memory_gib": 11.745775699615479
+}
