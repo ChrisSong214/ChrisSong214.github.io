@@ -1732,44 +1732,14 @@
         <!-- SECTION: Part 4B Overview -->
         <section id="sec-partb-overview" class="section-block">
             <div class="part-header">
-                <div class="part-tag">Part 4B Introduction · The MOPS Pipeline</div>
-                <h2 class="section-title">Automating Panoramas: From Manual Points to MOPS Autostitching</h2>
-                <div class="section-desc">Implementing the seminal Brown et al. (CVPR 2005) multi-scale oriented patches pipeline.</div>
+                <div class="part-tag">Part 4B Overview</div>
+                <h2 class="section-title">Automated Mosaicing (MOPS Pipeline)</h2>
+                <div class="section-desc">Automating the manual point clicking from Part 4A using the MOPS pipeline (Brown et al., CVPR 2005).</div>
             </div>
 
             <p>
-                In <strong>Part 4A</strong>, we established that a projective homography accurately registers photographs into a wide-field panorama—provided we supply sufficient corresponding point pairs. However, manually clicking 8 to 12 points per image pair is labor-intensive, operator-dependent, susceptible to human positioning errors (typically 1–2 pixels), and entirely impractical for video streams or autonomous systems.
+                In this part, we automate the panorama stitching pipeline following <em>"Multi-Image Matching using Multi-Scale Oriented Patches"</em> (MOPS). The system detects Harris corners, evenly distributes them using Adaptive Non-Maximal Suppression (ANMS), extracts normalized 8&times;8 feature descriptors, matches candidate pairs with Lowe's ratio test, and fits robust homographies via 4-point RANSAC.
             </p>
-            <p>
-                In <strong>Part 4B</strong>, we implement an autonomous end-to-end feature matching and autostitching pipeline following the landmark paper <em>"Multi-Image Matching using Multi-Scale Oriented Patches"</em> (MOPS) by Matthew Brown, Richard Szeliski, and Simon Winder (CVPR 2005). The system replaces manual clicking with an automated computer vision workflow:
-            </p>
-
-            <div class="grid-3">
-                <div class="gallery-card">
-                    <div class="gallery-card-body">
-                        <div class="gallery-card-title">1. Corner Detection &amp; ANMS</div>
-                        <p style="font-size: 0.88rem; margin-top: 6px;">
-                            Extract candidate interest points using the Harris corner response, then apply <strong>Adaptive Non-Maximal Suppression (ANMS)</strong> to enforce a uniform spatial distribution across the scene.
-                        </p>
-                    </div>
-                </div>
-                <div class="gallery-card">
-                    <div class="gallery-card-body">
-                        <div class="gallery-card-title">2. MOPS Feature Descriptors</div>
-                        <p style="font-size: 0.88rem; margin-top: 6px;">
-                            Sample $8 \times 8$ normalized patches from Gaussian-blurred $40 \times 40$ windows with stride 5. Standardize to zero-mean and unit-variance for affine lighting invariance.
-                        </p>
-                    </div>
-                </div>
-                <div class="gallery-card">
-                    <div class="gallery-card-body">
-                        <div class="gallery-card-title">3. Matching &amp; 4-Pt RANSAC</div>
-                        <p style="font-size: 0.88rem; margin-top: 6px;">
-                            Match descriptors via Euclidean distance using Lowe's ratio test ($r &lt; 0.7$), then run a 4-point RANSAC loop to filter out false matches and compute the optimal global homography.
-                        </p>
-                    </div>
-                </div>
-            </div>
         </section>
 
         <!-- SECTION B.1: Harris & ANMS -->
@@ -1777,59 +1747,46 @@
             <div class="part-header">
                 <div class="part-tag">Deliverable B.1</div>
                 <h2 class="section-title">B.1: Harris Corner Detection &amp; Adaptive Non-Maximal Suppression (ANMS)</h2>
-                <div class="section-desc">Detecting salient corners and enforcing uniform spatial distribution across the image frame.</div>
+                <div class="section-desc">Extracting corner peaks and enforcing a uniform spatial distribution across the scene.</div>
             </div>
 
             <p>
-                The first stage of feature detection identifies salient interest points where the local image gradient exhibits strong variations in orthogonal directions. Using the standard <strong>Harris corner detector</strong>, we compute the second moment matrix $M$ over local image gradients $I_x, I_y$ and evaluate the corner response:
+                Raw Harris corner detection identifies thousands of local gradient peaks, but they tend to cluster densely in high-texture areas (such as tree foliage or intricate brickwork) while leaving other areas bare.
+            </p>
+            <p>
+                To produce an even spatial distribution of strong feature points across the entire image, we implement <strong>Adaptive Non-Maximal Suppression (ANMS)</strong> (Brown et al., Section 3). For each detected corner $x_i$, its suppression radius $r_i$ is the minimum distance to another corner $x_j$ with significantly larger corner strength ($c_{\text{robust}} = 0.9$):
             </p>
 
             <div class="math-box">
-                <div class="math-title">Harris Corner Measure</div>
-                $$M = \sum_{(u,v)} w(u,v) \begin{bmatrix} I_x^2 & I_x I_y \\ I_x I_y & I_y^2 \end{bmatrix}, \qquad R = \det(M) - k \cdot \text{trace}(M)^2 \quad (k = 0.05)$$
+                <div class="math-title">ANMS Suppression Radius</div>
+                $$r_i = \min_j ||x_i - x_j||_2 \quad \text{such that} \quad f(x_i) < c_{\text{robust}} \times f(x_j), \quad c_{\text{robust}} = 0.9$$
             </div>
-
             <p>
-                While <code>corner_harris</code> successfully identifies 30,000 to 45,000 local gradient peaks per image, raw Harris corners suffer from severe <strong>spatial clustering</strong>. High-contrast, dense textures—such as foliage, tree canopies, and intricate brickwork—produce thousands of tightly packed points, while large architectural walls and open terrain are left completely sparse. Estimating a homography from clustered points is mathematically ill-conditioned, as the transformation overfits to a localized patch rather than the whole scene.
+                All corners are sorted in descending order of suppression radius $r_i$, and the top $N = 1000$ corners are retained.
             </p>
-
-            <div class="callout callout-blue">
-                <div class="callout-title">
-                    <span>💡</span> Adaptive Non-Maximal Suppression (ANMS)
-                </div>
-                <p>
-                    To resolve this clustering problem, we implement <strong>Adaptive Non-Maximal Suppression (ANMS)</strong> (Brown et al., Section 3). For each detected corner $x_i$, its suppression radius $r_i$ is defined as the minimum Euclidean distance to another corner $x_j$ that has significantly larger corner strength ($c_{\text{robust}} = 0.9$):
-                </p>
-                <div class="math-box" style="margin: 10px 0; background: rgba(0,0,0,0.2);">
-                    $$r_i = \min_j ||x_i - x_j||_2 \quad \text{such that} \quad f(x_i) < c_{\text{robust}} \times f(x_j), \quad c_{\text{robust}} = 0.9$$
-                </div>
-                <p style="margin-bottom: 0;">
-                    If no such point exists, $x_i$ is a dominant peak and $r_i = \infty$. Sorting all corners in descending order of suppression radius $r_i$ and retaining the top $N = 1000$ points guarantees that every chosen feature is the most prominent landmark within its local radius, producing a uniform, well-distributed constellation of features spanning the full field of view.
-                </p>
-            </div>
 
             <!-- Set 1: LBNL ANMS -->
             <div class="subsection">
                 <h3 class="subsection-title">1. Piedmont Avenue Overlook: Harris vs. ANMS</h3>
                 <div class="grid-2">
                     <div class="gallery-card">
-                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/LBNL_anms_left.png', 'Piedmont Avenue Overlook Left: Harris Corners (Left) vs ANMS Selection (Right)')">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/LBNL_anms_left.png', 'Piedmont Avenue Overlook Left: Harris (Left) vs ANMS (Right)')">
                             <img src="part_b/LBNL_anms_left.png" alt="LBNL Left ANMS" loading="lazy" decoding="async">
                             <div class="img-zoom-hint">🔍 View Full Res</div>
                         </div>
                         <div class="gallery-card-body">
                             <div class="gallery-card-title">Piedmont Avenue Left: Harris (Left) vs. ANMS (Right)</div>
-                            <div class="gallery-card-desc">Left: 43,413 raw Harris corners heavily clumped in trees. Right: 1,000 ANMS points uniformly distributed.</div>
+                            <div class="gallery-card-desc">Left: 43,413 raw Harris corners. Right: 1,000 ANMS points uniformly distributed.</div>
                         </div>
                     </div>
                     <div class="gallery-card">
-                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/LBNL_anms_right.png', 'Piedmont Avenue Overlook Right: Harris Corners (Left) vs ANMS Selection (Right)')">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/LBNL_anms_right.png', 'Piedmont Avenue Overlook Right: Harris (Left) vs ANMS (Right)')">
                             <img src="part_b/LBNL_anms_right.png" alt="LBNL Right ANMS" loading="lazy" decoding="async">
                             <div class="img-zoom-hint">🔍 View Full Res</div>
                         </div>
                         <div class="gallery-card-body">
                             <div class="gallery-card-title">Piedmont Avenue Right: Harris (Left) vs. ANMS (Right)</div>
-                            <div class="gallery-card-desc">Left: 44,666 raw corners. Right: 1,000 ANMS points covering the skyline, street level, and campus horizon.</div>
+                            <div class="gallery-card-desc">Left: 44,666 raw corners. Right: 1,000 ANMS points evenly covering the frame.</div>
                         </div>
                     </div>
                 </div>
@@ -1840,17 +1797,17 @@
                 <h3 class="subsection-title">2. Lewis Hall: Harris vs. ANMS</h3>
                 <div class="grid-2">
                     <div class="gallery-card">
-                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/lewis_anms_left.png', 'Lewis Hall Left: Harris Corners (Left) vs ANMS Selection (Right)')">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/lewis_anms_left.png', 'Lewis Hall Left: Harris (Left) vs ANMS (Right)')">
                             <img src="part_b/lewis_anms_left.png" alt="Lewis Left ANMS" loading="lazy" decoding="async">
                             <div class="img-zoom-hint">🔍 View Full Res</div>
                         </div>
                         <div class="gallery-card-body">
                             <div class="gallery-card-title">Lewis Hall Left: Harris (Left) vs. ANMS (Right)</div>
-                            <div class="gallery-card-desc">40,392 raw corners reduced to 1,000 ANMS points tracking window mullions, rooflines, and walkways.</div>
+                            <div class="gallery-card-desc">40,392 raw corners reduced to 1,000 ANMS points tracking window mullions and rooflines.</div>
                         </div>
                     </div>
                     <div class="gallery-card">
-                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/lewis_anms_right.png', 'Lewis Hall Right: Harris Corners (Left) vs ANMS Selection (Right)')">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/lewis_anms_right.png', 'Lewis Hall Right: Harris (Left) vs ANMS (Right)')">
                             <img src="part_b/lewis_anms_right.png" alt="Lewis Right ANMS" loading="lazy" decoding="async">
                             <div class="img-zoom-hint">🔍 View Full Res</div>
                         </div>
@@ -1867,17 +1824,17 @@
                 <h3 class="subsection-title">3. California Memorial Stadium: Harris vs. ANMS</h3>
                 <div class="grid-2">
                     <div class="gallery-card">
-                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/stadium_anms_left.png', 'California Memorial Stadium Left: Harris Corners (Left) vs ANMS Selection (Right)')">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/stadium_anms_left.png', 'California Memorial Stadium Left: Harris (Left) vs ANMS (Right)')">
                             <img src="part_b/stadium_anms_left.png" alt="Stadium Left ANMS" loading="lazy" decoding="async">
                             <div class="img-zoom-hint">🔍 View Full Res</div>
                         </div>
                         <div class="gallery-card-body">
                             <div class="gallery-card-title">Memorial Stadium Left: Harris (Left) vs. ANMS (Right)</div>
-                            <div class="gallery-card-desc">34,884 raw corners suppressed to 1,000 points spanning the goalposts, stadium bowl, and pine ridge.</div>
+                            <div class="gallery-card-desc">34,884 raw corners suppressed to 1,000 points spanning the stadium bowl and field.</div>
                         </div>
                     </div>
                     <div class="gallery-card">
-                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/stadium_anms_right.png', 'California Memorial Stadium Right: Harris Corners (Left) vs ANMS Selection (Right)')">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/stadium_anms_right.png', 'California Memorial Stadium Right: Harris (Left) vs ANMS (Right)')">
                             <img src="part_b/stadium_anms_right.png" alt="Stadium Right ANMS" loading="lazy" decoding="async">
                             <div class="img-zoom-hint">🔍 View Full Res</div>
                         </div>
@@ -1895,42 +1852,17 @@
             <div class="part-header">
                 <div class="part-tag">Deliverable B.2</div>
                 <h2 class="section-title">B.2: Feature Descriptor Extraction (MOPS 8&times;8 Patches)</h2>
-                <div class="section-desc">Extracting normalized, scale-sampled feature patches with affine lighting invariance.</div>
+                <div class="section-desc">Sampling 8&times;8 normalized patches from anti-aliased 40&times;40 windows.</div>
             </div>
 
             <p>
-                Once interest points are selected via ANMS, we must describe their local neighborhood so that corresponding points across images can be identified. Directly sampling an $8 \times 8$ pixel patch centered at the keypoint fails in practice: it covers too small a visual footprint (8 pixels in a high-resolution photo contains virtually zero contextual information), is highly vulnerable to minor sub-pixel localization shifts, and captures high-frequency pixel noise.
+                Rather than sampling a small $8 \times 8$ pixel neighborhood directly (which lacks context and is sensitive to noise), we sample from a larger <strong>$40 \times 40$ window</strong>:
             </p>
-            <p>
-                Following the MOPS recipe (Brown et al., Section 4), we extract <strong>normalized $8 \times 8$ feature descriptors from larger $40 \times 40$ windows</strong> through a four-step pipeline:
-            </p>
-
-            <div class="grid-2">
-                <div class="gallery-card">
-                    <div class="gallery-card-body">
-                        <div class="gallery-card-title">1. Anti-Aliasing &amp; Gaussian Smoothing</div>
-                        <p style="font-size: 0.88rem; margin-top: 6px;">
-                            We apply a Gaussian blur with $\sigma = 1.5$ to the grayscale image before subsampling. Filtering removes frequencies above the Nyquist rate of the downsampled grid, preventing high-frequency aliasing artifacts.
-                        </p>
-                    </div>
-                </div>
-                <div class="gallery-card">
-                    <div class="gallery-card-body">
-                        <div class="gallery-card-title">2. Subsampling Stride of 5</div>
-                        <p style="font-size: 0.88rem; margin-top: 6px;">
-                            From the $40 \times 40$ window centered at $(x, y)$, we sample every 5th pixel using <code>window[2::5, 2::5]</code>, yielding an $8 \times 8$ patch representing a $40 \times 40$ spatial context (5&times; wider receptive field).
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="math-box">
-                <div class="math-title">Bias / Gain Normalization</div>
-                $$D_{\text{norm}} = \frac{D - \mu_D}{\sigma_D + \epsilon}, \qquad \mu_D = \frac{1}{64}\sum_{i=1}^{64} D_i, \quad \sigma_D = \sqrt{\frac{1}{64}\sum_{i=1}^{64} (D_i - \mu_D)^2}, \quad \epsilon = 10^{-8}$$
-                <p style="margin-top: 8px; font-size: 0.9rem; color: var(--text-secondary);">
-                    Standardizing each 64-dimensional descriptor vector to zero mean ($\mu = 0$) and unit standard deviation ($\sigma = 1$) makes it invariant to affine photometric changes ($I' = a I + b$). Patches with near-zero contrast ($\sigma_D \le 10^{-6}$) are discarded.
-                </p>
-            </div>
+            <ul style="margin-left: 20px; margin-bottom: 16px; color: var(--text-secondary); line-height: 1.7;">
+                <li><strong>Anti-Aliasing:</strong> Pre-filter the image with a Gaussian blur ($\sigma = 1.5$) to prevent downsampling aliasing.</li>
+                <li><strong>Subsampling:</strong> Sample the $40 \times 40$ window at 5-pixel intervals (<code>window[2::5, 2::5]</code>) to get an $8 \times 8$ patch.</li>
+                <li><strong>Normalization:</strong> Standardize each 8&times;8 descriptor patch to zero mean and unit variance ($D_{\text{norm}} = (D - \mu) / (\sigma + 10^{-8})$) for invariance to affine lighting variations.</li>
+            </ul>
 
             <div class="grid-3">
                 <div class="gallery-card">
@@ -1940,7 +1872,7 @@
                     </div>
                     <div class="gallery-card-body">
                         <div class="gallery-card-title">Piedmont Avenue Descriptors</div>
-                        <div class="gallery-card-desc">Sample 8&times;8 normalized descriptor patches extracted from 40&times;40 neighborhoods with keypoint coordinates.</div>
+                        <div class="gallery-card-desc">Sample 8&times;8 normalized descriptor patches extracted from 40&times;40 windows.</div>
                     </div>
                 </div>
                 <div class="gallery-card">
@@ -1950,7 +1882,7 @@
                     </div>
                     <div class="gallery-card-body">
                         <div class="gallery-card-title">Lewis Hall Descriptors</div>
-                        <div class="gallery-card-desc">Rich gradient structures capturing brick corners, window muntins, and architectural boundaries.</div>
+                        <div class="gallery-card-desc">Descriptors capturing brick edges and window corners.</div>
                     </div>
                 </div>
                 <div class="gallery-card">
@@ -1960,7 +1892,7 @@
                     </div>
                     <div class="gallery-card-body">
                         <div class="gallery-card-title">Memorial Stadium Descriptors</div>
-                        <div class="gallery-card-desc">Descriptors capturing bleacher step corners, press box fixtures, and hillside tree edges.</div>
+                        <div class="gallery-card-desc">Descriptors capturing bleacher steps and hillside foliage edges.</div>
                     </div>
                 </div>
             </div>
@@ -1970,37 +1902,25 @@
         <section id="sec-matching" class="section-block">
             <div class="part-header">
                 <div class="part-tag">Deliverable B.3</div>
-                <h2 class="section-title">B.3: Feature Matching via Lowe's Second-Nearest-Neighbor Ratio Test</h2>
-                <div class="section-desc">Establishing robust candidate matches and filtering background distractors.</div>
+                <h2 class="section-title">B.3: Feature Matching via Lowe's Ratio Test</h2>
+                <div class="section-desc">Pairwise Euclidean distance matching thresholded by nearest-neighbor distance ratio.</div>
             </div>
 
             <p>
-                To establish correspondences between two overlapping photographs, we compute the pairwise Euclidean distances (Sum of Squared Differences) between all feature descriptors in Image 1 and Image 2:
+                To establish correspondences, we compute pairwise Euclidean distances between descriptors in Image 1 and Image 2. For each descriptor in Image 1, we find its 1st nearest neighbor ($e_{\text{1-NN}}$) and 2nd nearest neighbor ($e_{\text{2-NN}}$) in Image 2.
+            </p>
+            <p>
+                We accept matches passing Lowe's ratio test:
             </p>
 
             <div class="math-box">
-                <div class="math-title">Descriptor Distance Metric</div>
-                $$\text{dist}(D_1^{(i)}, D_2^{(j)}) = ||D_1^{(i)} - D_2^{(j)}||_2 = \sqrt{\sum_{k=1}^{64} (D_1^{(i)}[k] - D_2^{(j)}[k])^2}$$
+                <div class="math-title">Lowe's Ratio Test</div>
+                $$r = \frac{e_{\text{1-NN}}}{e_{\text{2-NN}}} < 0.7$$
             </div>
 
             <p>
-                Simply thresholding absolute Euclidean distances $\text{dist} &lt; \tau$ fails dramatically in practice because some descriptors lie in high-dimensional feature spaces where multiple non-corresponding background patches have relatively small distances, while other genuine matches have higher distances due to slight viewing angle changes.
+                False matches typically have $r \approx 1.0$ because background distractors look equally dissimilar to many patches, whereas true matches have a distinctively small 1-NN distance ($r \ll 1.0$).
             </p>
-
-            <div class="callout callout-green">
-                <div class="callout-title">
-                    <span>🎯</span> Lowe's Ratio Test Formulation
-                </div>
-                <p>
-                    For each descriptor $D_1^{(i)}$ in Image 1, we identify its <strong>first nearest neighbor</strong> ($e_{\text{1-NN}}$) and its <strong>second nearest neighbor</strong> ($e_{\text{2-NN}}$) among all descriptors in Image 2. We then evaluate the distance ratio:
-                </p>
-                <div class="math-box" style="margin: 10px 0; background: rgba(0,0,0,0.2);">
-                    $$r = \frac{e_{\text{1-NN}}}{e_{\text{2-NN}}} < \text{threshold} \quad (r < 0.7)$$
-                </div>
-                <p style="margin-bottom: 0;">
-                    <strong>Intuition:</strong> For an authentic visual correspondence, the best match is significantly closer than any other patch in the scene ($e_{\text{1-NN}} \ll e_{\text{2-NN}}$), producing a small ratio ($r \ll 1.0$). For false matches or repetitive textures (e.g. brick patterns, tree leaves), the 1st and 2nd nearest neighbors have nearly identical distances ($e_{\text{1-NN}} \approx e_{\text{2-NN}}$), giving $r \approx 1.0$. Setting $r &lt; 0.7$ (consistent with Brown et al., Figure 6b) discards the vast majority of ambiguous false matches while preserving true correspondences.
-                </p>
-            </div>
 
             <div class="grid-3">
                 <div class="gallery-card">
@@ -2009,8 +1929,8 @@
                         <div class="img-zoom-hint">🔍 View Full Res</div>
                     </div>
                     <div class="gallery-card-body">
-                        <div class="gallery-card-title">Piedmont Avenue Initial Matches</div>
-                        <div class="gallery-card-desc">88 candidate match pairs passing $r &lt; 0.7$ connecting the left and right perspectives.</div>
+                        <div class="gallery-card-title">Piedmont Avenue Matches</div>
+                        <div class="gallery-card-desc">88 candidate match pairs passing $r &lt; 0.7$.</div>
                     </div>
                 </div>
                 <div class="gallery-card">
@@ -2019,8 +1939,8 @@
                         <div class="img-zoom-hint">🔍 View Full Res</div>
                     </div>
                     <div class="gallery-card-body">
-                        <div class="gallery-card-title">Lewis Hall Initial Matches</div>
-                        <div class="gallery-card-desc">81 candidate matches establishing correspondences across the facade and breezeway.</div>
+                        <div class="gallery-card-title">Lewis Hall Matches</div>
+                        <div class="gallery-card-desc">81 candidate match pairs across the architectural facade.</div>
                     </div>
                 </div>
                 <div class="gallery-card">
@@ -2029,8 +1949,8 @@
                         <div class="img-zoom-hint">🔍 View Full Res</div>
                     </div>
                     <div class="gallery-card-body">
-                        <div class="gallery-card-title">Memorial Stadium Initial Matches</div>
-                        <div class="gallery-card-desc">97 candidate matches across the bowl seating, goal lines, and mountain rim.</div>
+                        <div class="gallery-card-title">Memorial Stadium Matches</div>
+                        <div class="gallery-card-desc">97 candidate match pairs across the stadium bowl.</div>
                     </div>
                 </div>
             </div>
@@ -2041,77 +1961,60 @@
             <div class="part-header">
                 <div class="part-tag">Deliverable B.4</div>
                 <h2 class="section-title">B.4: 4-Point RANSAC for Robust Homography &amp; Outlier Rejection</h2>
-                <div class="section-desc">Hypothesize-and-verify consensus loop to eliminate outliers and fit optimal homographies.</div>
+                <div class="section-desc">Estimating homographies robustly in the presence of outlier matches.</div>
             </div>
 
             <p>
-                Even with Lowe's ratio test ($r &lt; 0.7$), a fraction of correspondence matches remain incorrect (caused by repetitive architectural geometry or parallax motion). Because standard least-squares homography estimation has an effective breakdown point of 0%, even a single outlier pair can corrupt the homography matrix and cause catastrophic shearing.
+                To eliminate remaining outlier matches, we implement <strong>4-Point RANSAC</strong>:
             </p>
-            <p>
-                To achieve robust alignment, we implement <strong>4-Point RANSAC</strong> (Random Sample Consensus) completely from scratch:
-            </p>
+            <ol style="margin-left: 20px; margin-bottom: 16px; font-size: 0.95rem; line-height: 1.7; color: var(--text-secondary);">
+                <li>Randomly select 4 candidate correspondence pairs $(p_1, p_2)$.</li>
+                <li>Compute the exact homography $H$ mapping $p_2 \to p_1$.</li>
+                <li>Compute reprojection errors $\epsilon_k = ||\hat{P}_{1, k} - P_{1, k}||_2$ for all candidates.</li>
+                <li>Count inliers with $\epsilon_k &lt; 3.0$ pixels.</li>
+                <li>Repeat for $S = 4,000$ iterations and keep the model with the largest inlier set.</li>
+                <li>Recompute the final homography $H_{\text{final}}$ using all consensus inliers via linear least squares.</li>
+            </ol>
 
-            <div class="callout callout-purple">
-                <div class="callout-title">
-                    <span>⚙️</span> The 4-Point RANSAC Algorithm
-                </div>
-                <ol style="margin-left: 20px; font-size: 0.95rem; line-height: 1.7; color: var(--text-secondary);">
-                    <li><strong>Random Sampling:</strong> Randomly select 4 candidate correspondence pairs $(p_{1}^{(k)}, p_{2}^{(k)})_{k=1}^4$ without replacement.</li>
-                    <li><strong>Model Hypothesize:</strong> Compute the exact homography $H_{\text{cand}}$ mapping $p_2 \to p_1$ from the 4 pairs using the $8 \times 9$ linear system ($Ah = 0$).</li>
-                    <li><strong>Consensus Verification:</strong> Project all candidate points $P_2$ into Image 1 coordinate space ($\hat{P}_1 = H_{\text{cand}} P_2$) and compute the Euclidean reprojection error:
-                        $$\epsilon_k = ||\hat{P}_{1, k} - P_{1, k}||_2 = \sqrt{(\hat{x}_{1,k} - x_{1,k})^2 + (\hat{y}_{1,k} - y_{1,k})^2}$$
-                    </li>
-                    <li><strong>Inlier Counting:</strong> A correspondence is classified as an inlier if $\epsilon_k &lt; \text{threshold}$ (we use $\epsilon \le 3.0$ pixels).</li>
-                    <li><strong>Iteration:</strong> Repeat for $S = 4,000$ iterations and keep the homography hypothesis yielding the maximum inlier count.</li>
-                    <li><strong>Least-Squares Refinement:</strong> Recompute the final homography $H_{\text{final}}$ using <em>all</em> consensus inliers via overdetermined linear least squares.</li>
-                </ol>
-            </div>
-
-            <div class="subsection">
-                <h3 class="subsection-title">Quantitative Pipeline Statistics</h3>
-                <p>
-                    Below is the quantitative breakdown across all three datasets showing the survival rate of features from raw Harris detection to the final RANSAC consensus inlier set:
-                </p>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Dataset Scene</th>
-                                <th>Raw Harris Corners (L / R)</th>
-                                <th>ANMS Keypoints</th>
-                                <th>Lowe Matches ($r &lt; 0.7$)</th>
-                                <th>RANSAC Inliers ($\epsilon \le 3$ px)</th>
-                                <th>Inlier Ratio (%)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><strong>Piedmont Avenue Overlook</strong></td>
-                                <td>43,413 / 44,666</td>
-                                <td>1,000 / 1,000</td>
-                                <td>88</td>
-                                <td><strong>79</strong></td>
-                                <td><span class="badge badge-green">89.8%</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Lewis Hall (Chemistry)</strong></td>
-                                <td>40,392 / 40,608</td>
-                                <td>1,000 / 1,000</td>
-                                <td>81</td>
-                                <td><strong>67</strong></td>
-                                <td><span class="badge badge-green">82.7%</span></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Memorial Stadium</strong></td>
-                                <td>34,884 / 35,252</td>
-                                <td>1,000 / 1,000</td>
-                                <td>97</td>
-                                <td><strong>41</strong></td>
-                                <td><span class="badge badge-amber">42.3%</span></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Dataset Scene</th>
+                            <th>Raw Harris Corners</th>
+                            <th>ANMS Keypoints</th>
+                            <th>Lowe Matches ($r &lt; 0.7$)</th>
+                            <th>RANSAC Inliers ($\epsilon \le 3$ px)</th>
+                            <th>Inlier Ratio</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Piedmont Avenue Overlook</strong></td>
+                            <td>43,413 / 44,666</td>
+                            <td>1,000 / 1,000</td>
+                            <td>88</td>
+                            <td><strong>79</strong></td>
+                            <td><span class="badge badge-green">89.8%</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Lewis Hall (Chemistry)</strong></td>
+                            <td>40,392 / 40,608</td>
+                            <td>1,000 / 1,000</td>
+                            <td>81</td>
+                            <td><strong>67</strong></td>
+                            <td><span class="badge badge-green">82.7%</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Memorial Stadium</strong></td>
+                            <td>34,884 / 35,252</td>
+                            <td>1,000 / 1,000</td>
+                            <td>97</td>
+                            <td><strong>41</strong></td>
+                            <td><span class="badge badge-amber">42.3%</span></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
             <div class="subsection">
@@ -2124,7 +2027,7 @@
                         </div>
                         <div class="gallery-card-body">
                             <div class="gallery-card-title">Piedmont Avenue Inliers vs. Outliers</div>
-                            <div class="gallery-card-desc">79 green inliers (89.8%) locked onto stable ground points; 9 red outlier matches successfully rejected.</div>
+                            <div class="gallery-card-desc">79 green inliers (89.8%); 9 outliers rejected.</div>
                         </div>
                     </div>
                     <div class="gallery-card">
@@ -2134,7 +2037,7 @@
                         </div>
                         <div class="gallery-card-body">
                             <div class="gallery-card-title">Lewis Hall Inliers vs. Outliers</div>
-                            <div class="gallery-card-desc">67 green inliers (82.7%) tracking architectural lines; 14 repetitive brick mismatches pruned.</div>
+                            <div class="gallery-card-desc">67 green inliers (82.7%); 14 brick outliers rejected.</div>
                         </div>
                     </div>
                     <div class="gallery-card">
@@ -2144,7 +2047,7 @@
                         </div>
                         <div class="gallery-card-body">
                             <div class="gallery-card-title">Memorial Stadium Inliers vs. Outliers</div>
-                            <div class="gallery-card-desc">41 green inliers locked onto solid stadium structure; 56 repetitive seating and cloud mismatches safely discarded.</div>
+                            <div class="gallery-card-desc">41 green inliers; 56 repetitive seating outliers rejected.</div>
                         </div>
                     </div>
                 </div>
@@ -2154,14 +2057,10 @@
         <!-- SECTION B.5: Automatic vs. Manual Stitching -->
         <section id="sec-comparison" class="section-block">
             <div class="part-header">
-                <div class="part-tag">Deliverable B.5 &amp; Comparative Analysis</div>
-                <h2 class="section-title">B.5: Panorama Stitching &amp; Comparison: Manual (Part 4A) vs. Automatic (Part 4B)</h2>
-                <div class="section-desc">Side-by-side evaluation of manual correspondence stitching against fully autonomous MOPS autostitching.</div>
+                <div class="part-tag">Deliverable B.5 &amp; Comparison</div>
+                <h2 class="section-title">B.5: Manual Stitching (Part 4A) vs. Automatic Stitching (Part 4B)</h2>
+                <div class="section-desc">Comparing mosaics from manual clicking (Part 4A) with automated MOPS + RANSAC autostitching (Part 4B).</div>
             </div>
-
-            <p>
-                Below we directly compare the panoramas produced by manual point clicking (<strong>Part 4A</strong>) against the fully autonomous mosaics generated by our MOPS + RANSAC pipeline (<strong>Part 4B</strong>). Both sets of panoramas were warped using our custom bilinear inverse warp engine and feathered using 2D Euclidean distance transform alpha blending.
-            </p>
 
             <!-- Dataset 1: LBNL -->
             <div class="subsection">
@@ -2194,7 +2093,7 @@
                             </div>
                             <div class="gallery-card-body">
                                 <div class="gallery-card-title">Piedmont Avenue Overlook — Fully Autonomous Panorama (Part B)</div>
-                                <div class="gallery-card-desc">Seamless blend across tree branches and hills; zero manual interaction required.</div>
+                                <div class="gallery-card-desc">Seamless blend with zero manual clicking required.</div>
                             </div>
                         </div>
                     </div>
@@ -2212,9 +2111,6 @@
                         </div>
                     </div>
                 </div>
-                <p>
-                    <strong>Observations:</strong> The automated pipeline achieves higher structural consistency. While the manual alignment was excellent, human clicking exhibits slight 1-pixel jitter, leading to subtle softening in distant tree canopies. The automatic pipeline locked 79 consensus inliers across both foreground foliage and distant horizons, yielding razor-sharp continuity with zero ghosting.
-                </p>
             </div>
 
             <!-- Dataset 2: Lewis -->
@@ -2248,7 +2144,7 @@
                             </div>
                             <div class="gallery-card-body">
                                 <div class="gallery-card-title">Lewis Hall — Fully Autonomous Panorama (Part B)</div>
-                                <div class="gallery-card-desc">Perfect collinearity preservation across window mullions, roof trim, and concrete seams.</div>
+                                <div class="gallery-card-desc">Preserves collinearity across window trim and concrete edges.</div>
                             </div>
                         </div>
                     </div>
@@ -2266,9 +2162,6 @@
                         </div>
                     </div>
                 </div>
-                <p>
-                    <strong>Observations:</strong> For rigid architectural scenes like Lewis Hall, the automated homography is virtually indistinguishable from manual alignment, but was obtained in seconds without human fatigue. The 67 consensus inliers span the entire vertical height of the facade, preserving straight structural lines across the boundary seam.
-                </p>
             </div>
 
             <!-- Dataset 3: Stadium -->
@@ -2302,7 +2195,7 @@
                             </div>
                             <div class="gallery-card-body">
                                 <div class="gallery-card-title">California Memorial Stadium — Fully Autonomous Panorama (Part B)</div>
-                                <div class="gallery-card-desc">Grandstand rows, yard markers, and hill backdrop registered seamlessly.</div>
+                                <div class="gallery-card-desc">Clean registration across stadium rows despite repetitive bleacher patterns.</div>
                             </div>
                         </div>
                     </div>
@@ -2320,65 +2213,24 @@
                         </div>
                     </div>
                 </div>
-                <p>
-                    <strong>Observations:</strong> The stadium dataset presented the greatest challenge due to hundreds of identical, repetitive bench rows that tricked Lowe's ratio test into generating ambiguous matches. 4-point RANSAC proved its strength here: despite a 57.7% initial outlier rate, the algorithm successfully discovered the true consensus subset of 41 structural inliers, producing a panoramic mosaic with clean bleacher rows and zero field distortion.
-                </p>
             </div>
         </section>
 
         <!-- SECTION Reflections & Engineering Insights -->
         <section id="sec-reflection" class="section-block">
             <div class="part-header">
-                <div class="part-tag">Reflections &amp; Technical Insights</div>
-                <h2 class="section-title">Key Takeaways &amp; Engineering Learnings</h2>
-                <div class="section-desc">What was coolest, key algorithmic insights, and engineering reflections across Project 4A &amp; 4B.</div>
+                <div class="part-tag">Reflections</div>
+                <h2 class="section-title">What I Learned &amp; The Coolest Takeaway</h2>
+                <div class="section-desc">Key takeaways from implementing feature matching and autostitching.</div>
             </div>
 
             <div class="callout callout-purple">
                 <div class="callout-title">
-                    <span>🌟</span> The "Coolest" Takeaway
+                    <span>🌟</span> Coolest Thing Learned
                 </div>
-                <p>
-                    Across both parts of this project, the most awe-inspiring experience was watching a complex multi-stage pipeline turn <strong>unstructured raw pixels into seamless panoramas completely autonomously</strong>. In Part 4A, manually clicking points revealed the magic of projective homographies and virtual camera rotations. In Part 4B, taking that same problem and watching the computer automatically identify tens of thousands of corners, distill them into an evenly spaced constellation via ANMS, extract scale-invariant normalized descriptors, reject repetitive distractors via Lowe's ratio test, and find true geometric truth with 4-point RANSAC felt like witnessing computational vision at its absolute finest.
-                </p>
                 <p style="margin-bottom: 0;">
-                    Equally striking was how <strong>robustness emerges from simple mathematical principles</strong>: distance-transform blending eliminates seam lines, standard deviation normalization eliminates lighting discrepancies, and random sample consensus turns a 50% contaminated match pool into a razor-sharp mosaic.
+                    The coolest takeaway was seeing how <strong>RANSAC and ANMS turn an extremely noisy, clustered set of thousands of raw corners into a rock-solid homography</strong>. While manual clicking was tedious and prone to human jitter, the autonomous pipeline finds dozens of clean inliers across the entire overlap without any user interaction. It was especially fascinating to see RANSAC successfully find the true consensus inliers in Memorial Stadium even when over 50% of candidate matches were outliers caused by repetitive bleacher rows!
                 </p>
-            </div>
-
-            <div class="grid-2">
-                <div class="gallery-card">
-                    <div class="gallery-card-body">
-                        <div class="gallery-card-title">1. Spatial Balancing via ANMS vs. Naive Peaks (Part 4B)</div>
-                        <p style="font-size: 0.88rem; margin-top: 6px;">
-                            Selecting top corners purely by raw Harris response strength produces severe clustering in dense textures (foliage, tree leaves), causing homographies to overfit locally. ANMS enforces spatial diversity across the entire frame by ranking points based on their suppression radius to stronger neighbors, providing the well-spread geometry essential for stable homography computation.
-                        </p>
-                    </div>
-                </div>
-                <div class="gallery-card">
-                    <div class="gallery-card-body">
-                        <div class="gallery-card-title">2. Robust Consensus via 4-Point RANSAC (Part 4B)</div>
-                        <p style="font-size: 0.88rem; margin-top: 6px;">
-                            While Lowe's ratio test prunes over 90% of false matches, repetitive structures (e.g. stadium bleacher rows) still introduce outliers. Because least-squares optimization has a 0% breakdown point, RANSAC is indispensable: iteratively testing minimal 4-point sample sets reliably isolates the consensus inlier group even when over half the initial matches are invalid.
-                        </p>
-                    </div>
-                </div>
-                <div class="gallery-card">
-                    <div class="gallery-card-body">
-                        <div class="gallery-card-title">3. Sensitivity of Homographies to Collinearity (Part 4A)</div>
-                        <p style="font-size: 0.88rem; margin-top: 6px;">
-                            Clustering correspondence points or selecting points that are nearly collinear causes the normal equation matrix $A^T A$ to become ill-conditioned, yielding degenerate infinite canvases. Spreading points widely across the full extent of the overlap is critical to well-condition the linear system.
-                        </p>
-                    </div>
-                </div>
-                <div class="gallery-card">
-                    <div class="gallery-card-body">
-                        <div class="gallery-card-title">4. Necessity of Bilinear Antialiasing (Part 4A)</div>
-                        <p style="font-size: 0.88rem; margin-top: 6px;">
-                            While Nearest Neighbor interpolation is simple to code, its visual shortcomings are severe in projective warping: text characters break apart and diagonal edges staircase. Bilinear interpolation's continuous sub-pixel sampling preserves fine typographic details, making signs and architectural boundaries crisp and legible.
-                        </p>
-                    </div>
-                </div>
             </div>
         </section>
     </main>
