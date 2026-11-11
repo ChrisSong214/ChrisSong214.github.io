@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CS 180 Project 4B: Feature Matching and Autostitching</title>
+  <style>
+    :root {
+      --bg-color: #fcfcfc;
+      --card-bg: #ffffff;
+      --text-color: #24292f;
+      --heading-color: #1a1e24;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --border-color: #e5e7eb;
+      --code-bg: #f3f4f6;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.65;
+      color: var(--text-color);
+      background-color: var(--bg-color);
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem;
+    }
+    h1, h2, h3, h4 {
+      color: var(--heading-color);
+      font-weight: 700;
+    }
+    h1 {
+      font-size: 2.4rem;
+      border-bottom: 2px solid var(--border-color);
+      padding-bottom: 0.8rem;
+      margin-bottom: 0.5rem;
+    }
+    .author {
+      color: #6b7280;
+      font-size: 1.1rem;
+      margin-bottom: 2rem;
+    }
+    h2 {
+      font-size: 1.7rem;
+      margin-top: 2.5rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.5rem;
+    }
+    h3 {
+      font-size: 1.3rem;
+      margin-top: 1.5rem;
+    }
+    p, li {
+      font-size: 1.05rem;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+      gap: 1.5rem;
+      margin: 1.5rem 0;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+    figure {
+      margin: 0;
+      text-align: center;
+    }
+    figure img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+    figcaption {
+      font-size: 0.95rem;
+      color: #4b5563;
+      margin-top: 0.5rem;
+      font-style: italic;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: var(--code-bg);
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.95em;
+    }
+    .formula {
+      background: #eff6ff;
+      border-left: 4px solid var(--accent);
+      padding: 0.75rem 1.25rem;
+      margin: 1rem 0;
+      font-family: ui-monospace, monospace;
+      font-size: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+    }
+    th, td {
+      border: 1px solid var(--border-color);
+      padding: 0.75rem 1rem;
+      text-align: left;
+    }
+    th {
+      background: #f9fafb;
+      font-weight: 600;
+    }
+    tr:nth-child(even) {
+      background: #f9fafb;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Project 4B: Feature Matching and Autostitching</h1>
+  <div class="author">CS 180: Intro to Computer Vision and Computational Photography</div>
+
+  <div class="card">
+    <p><strong>Overview:</strong> In this project, we implement an end-to-end system for automatically stitching image mosaics following the paper <em>"Multi-Image Matching using Multi-Scale Oriented Patches"</em> (MOPS) by Brown et al. (CVPR 2005). The pipeline automates the manual point clicking from Part 4A by detecting Harris interest corners, spatially distributing them with Adaptive Non-Maximal Suppression (ANMS), extracting normalized 8&times;8 feature descriptors from 40&times;40 windows, matching features using Lowe's nearest-neighbor ratio test, and computing robust homographies via 4-point RANSAC.</p>
+  </div>
+
+  <!-- ==================================================================== -->
+  <h2>B.1: Harris Corner Detection & Adaptive Non-Maximal Suppression (ANMS)</h2>
+  <!-- ==================================================================== -->
+  <p>The first step identifies salient interest points where the image has sharp gradient variations in multiple directions using the Harris corner response measure. While <code>corner_harris</code> detects thousands of local peaks, they tend to cluster densely in highly textured regions (such as tree foliage or intricate brickwork) while leaving other areas bare.</p>
+
+  <p>To produce an even spatial distribution of strong feature points across the entire image, we implement <strong>Adaptive Non-Maximal Suppression (ANMS)</strong> (Brown et al., Section 3). For each detected corner $x_i$, its suppression radius $r_i$ is defined as the minimum distance to another corner $x_j$ that has significantly larger corner strength:</p>
+  
+  <div class="formula">
+    r_i = min_j ||x_i - x_j||_2  &nbsp;&nbsp; such that &nbsp;&nbsp; f(x_i) &lt; c_robust &times; f(x_j), &nbsp;&nbsp; c_robust = 0.9
+  </div>
+
+  <p>If no point $x_j$ satisfies this condition, $r_i = \infty$. All corners are then sorted in descending order of suppression radius $r_i$, and the top $N$ corners (e.g. 500 to 1,000) are retained.</p>
+
+  <div class="grid-2">
+    <figure>
+      <img src="../images/LBNL_anms_left.png" alt="LBNL Left: Harris vs ANMS">
+      <figcaption>Figure 1.1: LBNL Left Image — Harris corners before ANMS (left, densely clustered) vs. after ANMS (right, uniformly distributed across scene).</figcaption>
+    </figure>
+    <figure>
+      <img src="../images/LBNL_anms_right.png" alt="LBNL Right: Harris vs ANMS">
+      <figcaption>Figure 1.2: LBNL Right Image — Harris corners before ANMS vs. after ANMS.</figcaption>
+    </figure>
+  </div>
+
+  <div class="grid-2">
+    <figure>
+      <img src="../images/lewis_anms_left.png" alt="Lewis Left: Harris vs ANMS">
+      <figcaption>Figure 1.3: Lewis Hall Left — Harris corners before vs. after ANMS.</figcaption>
+    </figure>
+    <figure>
+      <img src="../images/stadium_anms_left.png" alt="Stadium Left: Harris vs ANMS">
+      <figcaption>Figure 1.4: California Memorial Stadium Left — Harris corners before vs. after ANMS.</figcaption>
+    </figure>
+  </div>
+
+  <!-- ==================================================================== -->
+  <h2>B.2: Feature Descriptor Extraction</h2>
+  <!-- ==================================================================== -->
+  <p>For each selected interest point, we extract an axis-aligned <strong>8&times;8 feature descriptor</strong>. Rather than sampling an 8&times;8 pixel neighborhood directly (which would cover too small an area and be sensitive to high-frequency noise), we sample from a larger <strong>40&times;40 window</strong> centered at the feature point:</p>
+  <ul>
+    <li><strong>Anti-Aliasing Filter:</strong> We first apply a Gaussian blur ($\sigma = 1.5$) to the image to eliminate high-frequency aliasing before downsampling.</li>
+    <li><strong>Subsampling:</strong> The 40&times;40 window is sampled at 5-pixel intervals (<code>window[2::5, 2::5]</code>) to obtain an 8&times;8 descriptor patch.</li>
+    <li><strong>Bias / Gain Normalization:</strong> Each 8&times;8 patch $D$ is normalized to zero mean and unit variance:
+      <div class="formula">
+        D_norm = (D - mean(D)) / (std(D) + 1e-8)
+      </div>
+      This provides invariance to affine lighting variations (brightness offset and contrast scale).
+    </li>
+  </ul>
+
+  <div class="grid-3">
+    <figure>
+      <img src="../images/LBNL_descriptors_sample.png" alt="Sample Descriptors LBNL">
+      <figcaption>Figure 2.1: Sample 8&times;8 normalized feature descriptors extracted from LBNL.</figcaption>
+    </figure>
+    <figure>
+      <img src="../images/lewis_descriptors_sample.png" alt="Sample Descriptors Lewis">
+      <figcaption>Figure 2.2: Sample 8&times;8 normalized feature descriptors extracted from Lewis Hall.</figcaption>
+    </figure>
+    <figure>
+      <img src="../images/stadium_descriptors_sample.png" alt="Sample Descriptors Stadium">
+      <figcaption>Figure 2.3: Sample 8&times;8 normalized feature descriptors extracted from Memorial Stadium.</figcaption>
+    </figure>
+  </div>
+
+  <!-- ==================================================================== -->
+  <h2>B.3: Feature Matching (Lowe's Ratio Test)</h2>
+  <!-- ==================================================================== -->
+  <p>To establish correspondences between two images, we compute the pairwise Euclidean distances between all descriptors in Image 1 and Image 2. For each feature in Image 1:</p>
+  <ol>
+    <li>We identify its 1st nearest neighbor (smallest distance $e_{\text{1-NN}}$) and 2nd nearest neighbor (second smallest distance $e_{\text{2-NN}}$) in Image 2.</li>
+    <li>We compute the distance ratio $r = \frac{e_{\text{1-NN}}}{e_{\text{2-NN}}}$.</li>
+    <li>If $r < \text{threshold}$ (we use 0.7, consistent with Brown et al. Figure 6b), we declare $(i, \text{1-NN})$ a candidate match. False matches typically have $r \approx 1.0$ because arbitrary patches look equally dissimilar to many background patches, whereas true matches have a distinctively small 1-NN distance.</li>
+  </ol>
+
+  <div class="grid-2">
+    <figure>
+      <img src="../images/LBNL_matches.png" alt="LBNL Feature Matches">
+      <figcaption>Figure 3.1: Candidate feature matches between LBNL Left and Right ($r &lt; 0.7$).</figcaption>
+    </figure>
+    <figure>
+      <img src="../images/lewis_matches.png" alt="Lewis Feature Matches">
+      <figcaption>Figure 3.2: Candidate feature matches between Lewis Left and Right ($r &lt; 0.7$).</figcaption>
+    </figure>
+  </div>
+  <figure>
+    <img src="../images/stadium_matches.png" alt="Stadium Feature Matches">
+    <figcaption>Figure 3.3: Candidate feature matches between Memorial Stadium Left and Right ($r &lt; 0.7$).</figcaption>
+  </figure>
+
+  <!-- ==================================================================== -->
+  <h2>B.4: 4-Point RANSAC for Robust Homography & Mosaic Stitching</h2>
+  <!-- ==================================================================== -->
+  <p>Even after Lowe's ratio test, a small fraction of outlier matches can remain. Because ordinary least-squares homography fitting is highly sensitive to outliers, we implement <strong>4-Point RANSAC</strong> (Random Sample Consensus) completely from scratch:</p>
+  <div class="card">
+    <ol>
+      <li><strong>Sample:</strong> Randomly select 4 candidate correspondence pairs $(p_1, p_2)$ without replacement.</li>
+      <li><strong>Hypothesize:</strong> Solve for the exact homography $H$ mapping $p_2 \to p_1$ using the 4 pairs.</li>
+      <li><strong>Evaluate:</strong> Project all points $P_2$ by $H$: $\hat{P}_1 = H P_2$. Compute the Euclidean projection error $\epsilon_k = \|\hat{P}_{1, k} - P_{1, k}\|_2$.</li>
+      <li><strong>Consensus:</strong> Count inliers satisfying $\epsilon_k &lt; \text{threshold}$ (3.0 pixels).</li>
+      <li><strong>Iterate:</strong> Repeat for $S = 4,000$ iterations and retain the model yielding the largest inlier set.</li>
+      <li><strong>Refit:</strong> Recompute the final optimal homography $H_{\text{final}}$ using <em>all</em> consensus inliers via linear least squares.</li>
+    </ol>
+  </div>
+
+  <h3>RANSAC Inliers vs. Outliers</h3>
+  <p>The figure below highlights the robust classification of correspondences: inliers in green and rejected outliers in red.</p>
+
+  <div class="grid-2">
+    <figure>
+      <img src="../images/LBNL_ransac_inliers.png" alt="LBNL RANSAC Inliers">
+      <figcaption>Figure 4.1: LBNL RANSAC Inliers (green) vs. Outliers (red).</figcaption>
+    </figure>
+    <figure>
+      <img src="../images/lewis_ransac_inliers.png" alt="Lewis RANSAC Inliers">
+      <figcaption>Figure 4.2: Lewis RANSAC Inliers (green) vs. Outliers (red).</figcaption>
+    </figure>
+  </div>
+  <figure>
+    <img src="../images/stadium_ransac_inliers.png" alt="Stadium RANSAC Inliers">
+    <figcaption>Figure 4.3: Stadium RANSAC Inliers (green) vs. Outliers (red).</figcaption>
+  </figure>
+
+  <!-- ==================================================================== -->
+  <h2>Comparison: Manual Stitching (Part 4A) vs. Automatic Stitching (Part 4B)</h2>
+  <!-- ==================================================================== -->
+  <p>Below we compare the mosaics produced by manual clicking (Part A) with the fully automated mosaics produced by our MOPS + RANSAC pipeline (Part B). Both use bilinear inverse warping and distance-transform alpha blending.</p>
+
+  <h3>Dataset 1: LBNL View</h3>
+  <figure>
+    <img src="../images/LBNL_manual_vs_auto.png" alt="LBNL Comparison">
+    <figcaption>Figure 5.1: LBNL View — Manual (Part A) vs. Automatic (Part B).</figcaption>
+  </figure>
+
+  <h3>Dataset 2: Lewis Hall</h3>
+  <figure>
+    <img src="../images/lewis_manual_vs_auto.png" alt="Lewis Comparison">
+    <figcaption>Figure 5.2: Lewis Hall — Manual (Part A) vs. Automatic (Part B).</figcaption>
+  </figure>
+
+  <h3>Dataset 3: Memorial Stadium</h3>
+  <figure>
+    <img src="../images/stadium_manual_vs_auto.png" alt="Stadium Comparison">
+    <figcaption>Figure 5.3: California Memorial Stadium — Manual (Part A) vs. Automatic (Part B).</figcaption>
+  </figure>
+
+  <!-- ==================================================================== -->
+  <h2>B.5: Bells & Whistles: Rotation Invariance (Oriented Descriptors)</h2>
+  <!-- ==================================================================== -->
+  <p>Standard axis-aligned descriptors are not invariant to in-plane image rotation. To achieve rotation invariance as described in Brown et al. (MOPS Section 4):</p>
+  <ul>
+    <li>We compute image gradients $I_x, I_y$ on the smoothed image.</li>
+    <li>For each keypoint, we determine the dominant local gradient direction:
+      <div class="formula">
+        \theta = \text{arctan2}\left(\sum I_y, \sum I_x\right)
+      </div>
+    </li>
+    <li>We rotate the canonical 40&times;40 sampling grid by angle $\theta$ around the interest point before extracting the 8&times;8 normalized descriptor using bilinear interpolation.</li>
+  </ul>
+
+  <p>To verify rotation invariance, we artificially rotate an image by $30^\circ$ and compare descriptor matching:</p>
+
+  <figure>
+    <img src="../images/rotation_invariance_comparison.png" alt="Rotation Invariance Comparison">
+    <figcaption>Figure 6.1: Rotation Invariance Benchmark — Under a 30&deg; image rotation, standard axis-aligned descriptors fail to find true matches, while our rotation-invariant oriented descriptors successfully match the rotated features.</figcaption>
+  </figure>
+
+</body>
+</html>
+

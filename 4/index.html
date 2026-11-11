@@ -1,0 +1,2484 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project 4: Image Warping, Mosaicing &amp; Autostitching | Chris Song</title>
+    <meta name="description"
+        content="CS180/280A Project 4: Image Warping, Mosaicing, and Feature Matching &amp; Autostitching. Planar homographies, bilinear inverse warping, planar rectification, Harris corner detection, ANMS, 8x8 feature descriptors, Lowe's ratio test, 4-point RANSAC, and automated panoramic stitching.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --bg-secondary: #111827;
+            --card-bg: rgba(17, 24, 39, 0.78);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-hover-border: rgba(16, 185, 129, 0.5);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-primary: #10b981;
+            --accent-secondary: #06b6d4;
+            --accent-gradient: linear-gradient(135deg, #10b981 0%, #14b8a6 50%, #06b6d4 100%);
+            --glow: rgba(16, 185, 129, 0.15);
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        [data-theme="light"] {
+            --bg: #f8fafc;
+            --bg-secondary: #ffffff;
+            --card-bg: rgba(255, 255, 255, 0.92);
+            --card-border: rgba(0, 0, 0, 0.08);
+            --card-hover-border: rgba(16, 185, 129, 0.6);
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --accent-primary: #059669;
+            --accent-secondary: #0891b2;
+            --glow: rgba(5, 150, 105, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-primary);
+            line-height: 1.65;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .bg-glow {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100vw;
+            height: 100vh;
+            background:
+                radial-gradient(circle at 15% 15%, rgba(16, 185, 129, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 85% 25%, rgba(6, 182, 212, 0.10) 0%, transparent 45%),
+                radial-gradient(circle at 50% 85%, rgba(20, 184, 166, 0.08) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1160px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header / Navbar */
+        header {
+            position: sticky;
+            top: 0;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            background: rgba(11, 15, 25, 0.78);
+            border-bottom: 1px solid var(--card-border);
+            z-index: 100;
+            transition: var(--transition);
+        }
+
+        [data-theme="light"] header {
+            background: rgba(248, 250, 252, 0.85);
+        }
+
+        .nav-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 68px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-primary);
+            font-weight: 700;
+            font-size: 1.05rem;
+            transition: var(--transition);
+        }
+
+        .logo:hover {
+            opacity: 0.85;
+        }
+
+        .logo-badge {
+            background: var(--accent-gradient);
+            color: #fff;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 700;
+            box-shadow: 0 2px 8px var(--glow);
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.88rem;
+            font-weight: 600;
+            padding: 7px 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--card-border);
+            background: rgba(255, 255, 255, 0.03);
+            transition: var(--transition);
+        }
+
+        .back-link:hover {
+            color: var(--accent-primary);
+            border-color: var(--accent-primary);
+            background: rgba(16, 185, 129, 0.08);
+        }
+
+        .theme-toggle-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            color: var(--text-primary);
+            padding: 7px 14px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: var(--transition);
+        }
+
+        .theme-toggle-btn:hover {
+            border-color: var(--accent-primary);
+            background: rgba(16, 185, 129, 0.08);
+        }
+
+        /* Hero Section */
+        .project-hero {
+            padding: 48px 0 24px 0;
+        }
+
+        .badge-bar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .badge {
+            font-size: 0.76rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 4px 10px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge-green {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            color: #34d399;
+        }
+
+        [data-theme="light"] .badge-green {
+            color: #059669;
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .badge-cyan {
+            background: rgba(6, 182, 212, 0.15);
+            border: 1px solid rgba(6, 182, 212, 0.35);
+            color: #22d3ee;
+        }
+
+        [data-theme="light"] .badge-cyan {
+            color: #0891b2;
+            background: rgba(6, 182, 212, 0.1);
+        }
+
+        .badge-blue {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            color: #93c5fd;
+        }
+
+        [data-theme="light"] .badge-blue {
+            color: #1d4ed8;
+            background: rgba(37, 99, 235, 0.1);
+        }
+
+        .badge-purple {
+            background: rgba(139, 92, 246, 0.15);
+            border: 1px solid rgba(139, 92, 246, 0.35);
+            color: #c084fc;
+        }
+
+        [data-theme="light"] .badge-purple {
+            color: #7c3aed;
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .badge-amber {
+            background: rgba(245, 158, 11, 0.15);
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            color: #fbbf24;
+        }
+
+        [data-theme="light"] .badge-amber {
+            color: #d97706;
+            background: rgba(245, 158, 11, 0.1);
+        }
+
+        .part-divider {
+            text-align: center;
+            padding: 56px 0 32px 0;
+            position: relative;
+        }
+
+        .part-divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--card-border), var(--accent-primary), var(--card-border), transparent);
+            z-index: 0;
+        }
+
+        .part-divider-badge {
+            position: relative;
+            z-index: 1;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent-primary);
+            padding: 10px 28px;
+            border-radius: 999px;
+            font-size: 0.95rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent-primary);
+            box-shadow: 0 4px 20px var(--glow);
+        }
+
+        .project-hero h1 {
+            font-size: clamp(2.1rem, 4.4vw, 3.1rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+            margin-bottom: 14px;
+        }
+
+        .gradient-text {
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: inline-block;
+        }
+
+        .project-subtitle {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 960px;
+            margin-bottom: 16px;
+            line-height: 1.6;
+        }
+
+        .project-meta {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        /* TOC Pills */
+        .toc-bar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 28px 0 16px 0;
+            padding: 14px 18px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .toc-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            margin-right: 6px;
+        }
+
+        .toc-link {
+            font-size: 0.84rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+
+        .toc-link:hover {
+            color: var(--text-primary);
+            background: rgba(16, 185, 129, 0.15);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Section Blocks & Anchor Offsets */
+        .section-block, [id^="sec-"] {
+            scroll-margin-top: 85px;
+        }
+
+        .section-block {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 38px;
+            margin: 36px 0 48px 0;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .part-header {
+            border-bottom: 2px solid var(--card-border);
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+
+        .part-tag {
+            font-size: 0.85rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent-primary);
+            margin-bottom: 6px;
+        }
+
+        .section-title {
+            font-size: 1.7rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-desc {
+            font-size: 1.02rem;
+            color: var(--text-secondary);
+        }
+
+        /* Subsections */
+        .subsection {
+            margin: 36px 0;
+        }
+
+        .subsection-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 14px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        p {
+            margin-bottom: 16px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        p strong {
+            color: var(--text-primary);
+        }
+
+        /* Math & Formulas */
+        .math-box {
+            background: rgba(0, 0, 0, 0.28);
+            border: 1px solid var(--card-border);
+            border-left: 4px solid var(--accent-primary);
+            border-radius: var(--radius-sm);
+            padding: 18px 22px;
+            margin: 18px 0 24px 0;
+            font-size: 0.98rem;
+            line-height: 1.6;
+            color: var(--text-primary);
+            overflow-x: auto;
+        }
+
+        [data-theme="light"] .math-box {
+            background: #f1f5f9;
+        }
+
+        .math-title {
+            font-weight: 700;
+            color: var(--accent-primary);
+            margin-bottom: 8px;
+            font-size: 0.88rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Callouts */
+        .callout {
+            border-radius: var(--radius-md);
+            padding: 18px 22px;
+            margin: 20px 0;
+            border: 1px solid var(--card-border);
+            background: rgba(16, 185, 129, 0.06);
+            border-left: 4px solid var(--accent-primary);
+        }
+
+        .callout-blue {
+            background: rgba(6, 182, 212, 0.07);
+            border-left-color: var(--accent-secondary);
+        }
+
+        .callout-purple {
+            background: rgba(139, 92, 246, 0.07);
+            border-left-color: #8b5cf6;
+        }
+
+        .callout-title {
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Code Blocks */
+        pre {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm);
+            padding: 16px 20px;
+            margin: 18px 0;
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.86rem;
+            line-height: 1.55;
+            color: #d1d5db;
+        }
+
+        [data-theme="light"] pre {
+            background: #f8fafc;
+            color: #1e293b;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.88em;
+            background: rgba(255, 255, 255, 0.08);
+            color: #34d399;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        [data-theme="light"] code {
+            color: #059669;
+            background: rgba(5, 150, 105, 0.08);
+        }
+
+        /* Grids */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin: 22px 0;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 18px;
+            margin: 22px 0;
+        }
+
+        @media (max-width: 860px) {
+            .grid-2, .grid-3 {
+                grid-template-columns: 1fr;
+            }
+            .section-block {
+                padding: 24px;
+            }
+        }
+
+        /* Gallery Cards */
+        .gallery-card {
+            background: rgba(15, 23, 42, 0.65);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            margin: 16px 0;
+            transition: var(--transition);
+        }
+
+        [data-theme="light"] .gallery-card {
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.09);
+        }
+
+        .gallery-card:hover {
+            border-color: var(--card-hover-border);
+            box-shadow: 0 10px 25px var(--glow);
+        }
+
+        .gallery-card-img-wrap {
+            position: relative;
+            background: #000;
+            width: 100%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .gallery-card-img-wrap img {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: contain;
+            transition: transform 0.3s ease;
+        }
+
+        .gallery-card:hover .gallery-card-img-wrap img {
+            transform: scale(1.015);
+        }
+
+        .img-zoom-hint {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            opacity: 0;
+            transform: translateY(4px);
+            transition: var(--transition);
+            pointer-events: none;
+            backdrop-filter: blur(4px);
+        }
+
+        .gallery-card-img-wrap:hover .img-zoom-hint {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .gallery-card-body {
+            padding: 14px 18px;
+        }
+
+        .gallery-card-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .gallery-card-desc {
+            font-size: 0.84rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        /* Comparison Slider / Tabs */
+        .comparison-container {
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            background: rgba(0, 0, 0, 0.2);
+            padding: 16px;
+            margin: 24px 0;
+        }
+
+        .comp-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .comp-tab-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            color: var(--text-secondary);
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.86rem;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .comp-tab-btn.active {
+            background: var(--accent-primary);
+            color: #fff;
+            border-color: var(--accent-primary);
+        }
+
+        .comp-view {
+            display: none;
+        }
+
+        .comp-view.active {
+            display: block;
+        }
+
+        /* Data Tables */
+        .table-wrap {
+            overflow-x: auto;
+            margin: 20px 0;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--card-border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            text-align: left;
+        }
+
+        th {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+            padding: 12px 16px;
+            font-weight: 700;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        [data-theme="light"] th {
+            background: #f1f5f9;
+        }
+
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--card-border);
+            color: var(--text-secondary);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Lightbox Dialog */
+        dialog#lightbox-dialog {
+            border: none;
+            border-radius: var(--radius-md);
+            background: rgba(15, 23, 42, 0.95);
+            color: #fff;
+            max-width: 92vw;
+            max-height: 92vh;
+            padding: 0;
+            margin: auto;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75);
+            overflow: hidden;
+        }
+
+        dialog#lightbox-dialog::backdrop {
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        .modal-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-height: 90vh;
+        }
+
+        .modal-content img {
+            max-width: 90vw;
+            max-height: 80vh;
+            object-fit: contain;
+            display: block;
+        }
+
+        .modal-header {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+            background: rgba(0, 0, 0, 0.5);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+
+        .modal-close-btn {
+            background: transparent;
+            border: none;
+            color: #9ca3af;
+            font-size: 1.5rem;
+            cursor: pointer;
+            line-height: 1;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: var(--transition);
+        }
+
+        .modal-close-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        footer {
+            border-top: 1px solid var(--card-border);
+            padding: 40px 0;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.88rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-glow"></div>
+
+    <!-- Navigation Header -->
+    <header>
+        <div class="container nav-inner">
+            <a href="../index.html" class="logo">
+                <div class="logo-badge">CS</div>
+                <span>Chris Song</span>
+            </a>
+            <div class="nav-right">
+                <a href="../index.html" class="back-link">
+                    <span>←</span> Portfolio Home
+                </a>
+                <button class="theme-toggle-btn" id="theme-toggle" aria-label="Toggle color theme">
+                    <span id="theme-icon">☀️</span>
+                    <span id="theme-text">Theme</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Hero Section -->
+        <section class="project-hero">
+            <div class="badge-bar">
+                <span class="badge badge-green">CS180 / CS280A · Project 4A &amp; 4B</span>
+                <span class="badge badge-cyan">Computational Photography</span>
+                <span class="badge badge-purple">Feature Matching &amp; MOPS</span>
+                <span class="badge badge-blue">UC Berkeley</span>
+            </div>
+            <h1>
+                IMAGE WARPING, MOSAICING &amp; <span class="gradient-text">AUTOSTITCHING</span>
+            </h1>
+            <p class="project-subtitle">
+                Projective transformations, homography estimation via least-squares, inverse warping with scratch-implemented Nearest Neighbor and Bilinear interpolation, planar rectification, and panoramic photo mosaicing with 2D distance-weighted alpha blending (Part 4A), followed by fully automated feature detection (Harris &amp; ANMS), MOPS descriptor extraction, Lowe's ratio test matching, and 4-point RANSAC autostitching (Part 4B).
+            </p>
+            <div class="project-meta">
+                <span><strong>Author:</strong> Chris Song</span>
+                <span>•</span>
+                <span><strong>Platform:</strong> Python, NumPy, SciPy (EDT), Scikit-Image, Matplotlib</span>
+                <span>•</span>
+                <span><strong>Course:</strong> Computer Vision &amp; Computational Photography</span>
+            </div>
+
+            <!-- Table of Contents Bar -->
+            <nav class="toc-bar" aria-label="Project sections navigation">
+                <span class="toc-title">Jump to:</span>
+                <a href="#sec-overview" class="toc-link">Overview</a>
+                <a href="#sec-shoot" class="toc-link">A.1 Shoot Pictures</a>
+                <a href="#sec-homography" class="toc-link">A.2 Recover Homographies</a>
+                <a href="#sec-warping" class="toc-link">A.3 Warping &amp; Rectification</a>
+                <a href="#sec-mosaics" class="toc-link">A.4 Image Mosaics</a>
+                <a href="#sec-partb-overview" class="toc-link">Part B Overview</a>
+                <a href="#sec-anms" class="toc-link">B.1 Harris &amp; ANMS</a>
+                <a href="#sec-descriptors" class="toc-link">B.2 Descriptors</a>
+                <a href="#sec-matching" class="toc-link">B.3 Feature Matching</a>
+                <a href="#sec-ransac" class="toc-link">B.4 4-Point RANSAC</a>
+                <a href="#sec-comparison" class="toc-link">B.5 Auto vs Manual</a>
+                <a href="#sec-reflection" class="toc-link">Reflections &amp; Insights</a>
+            </nav>
+        </section>
+
+        <!-- SECTION: Overview -->
+        <section id="sec-overview" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Introduction</div>
+                <h2 class="section-title">Project Overview &amp; Objectives</h2>
+                <div class="section-desc">The mathematics and pipeline of planar homographies and panorama stitching.</div>
+            </div>
+
+            <p>
+                In this project, we explore the geometry of projective transformations to align, rectify, and stitch images into seamless panoramas. When photos of a scene are captured by rotating a camera around its <strong>Center of Projection (COP)</strong>, the transformation between any two overlapping views is governed by a 2D <strong>homography</strong> (a projective transformation with 8 degrees of freedom).
+            </p>
+
+            <div class="callout callout-blue">
+                <div class="callout-title">
+                    <span>💡</span> Implementation Constraints &amp; Integrity
+                </div>
+                <p style="margin-bottom: 0;">
+                    In accordance with the project guidelines, high-level transformation functions such as <code>cv2.findHomography</code>, <code>cv2.warpPerspective</code>, <code>cv2.getPerspectiveTransform</code>, <code>skimage.transform.ProjectiveTransform</code>, and <code>scipy.interpolate.griddata</code> were <strong>not used</strong>. Every component—from least-squares homography recovery to inverse warping and dual interpolation algorithms (Nearest Neighbor and Bilinear)—was engineered from first principles in NumPy.
+                </p>
+            </div>
+
+            <div class="grid-3">
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">1. Recover Homographies</div>
+                        <div class="gallery-card-desc">Formulate the overdetermined linear system $Ah = b$ from $n \ge 4$ correspondence points and solve for the 8 degrees of freedom using least squares.</div>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">2. Inverse Warping &amp; Rectification</div>
+                        <div class="gallery-card-desc">Implement scratch Nearest Neighbor and Bilinear interpolation with inverse mapping ($H^{-1}$) to rectify perspective distortion on planar surfaces.</div>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">3. Multi-Image Panoramic Mosaics</div>
+                        <div class="gallery-card-desc">Determine global bounding boxes, warp images into a common reference canvas, and eliminate edge seams using Euclidean distance transform feathering.</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION A.1: Shoot the Pictures -->
+        <section id="sec-shoot" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Deliverable A.1 (20 pts)</div>
+                <h2 class="section-title">A.1: Shoot and Digitize Pictures</h2>
+                <div class="section-desc">Capturing perspective image sets with a fixed center of projection.</div>
+            </div>
+
+            <p>
+                To satisfy the requirements of a projective transformation, adjacent photographs must be captured while holding the camera's <strong>Center of Projection (COP)</strong> fixed, rotating purely in pan and tilt. Moving the camera spatially (translation) would introduce parallax, where near objects shift relative to distant backgrounds, violating the homographic assumption.
+            </p>
+            <p>
+                Each image set was photographed with <strong>50% to 70% field-of-view overlap</strong> to ensure an abundance of salient visual features across the shared region. Camera exposure and white balance were held consistent to minimize photometric discrepancy.
+            </p>
+
+            <!-- Set 1: LBNL -->
+            <div class="subsection">
+                <h3 class="subsection-title">Image Set 1: Piedmont Avenue Overlook</h3>
+                <p>
+                    Captured overlooking the Berkeley hills from Piedmont Avenue near California Memorial Stadium. Rich in natural terrain, trees, distant bay landmarks, and building architecture.
+                </p>
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/LBNL_left.png', 'Piedmont Avenue Overlook — Left View (Reference)')">
+                            <img src="part_a/web/LBNL_left.jpg" alt="Piedmont Avenue Left View" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Piedmont Avenue — Left Image (Reference View)</div>
+                            <div class="gallery-card-desc">Original Resolution: 5712 × 4284 | Serving as the reference projective plane ($H = I$).</div>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/LBNL_right.png', 'Piedmont Avenue Overlook — Right View')">
+                            <img src="part_a/web/LBNL_right.jpg" alt="Piedmont Avenue Right View" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Piedmont Avenue — Right Image</div>
+                            <div class="gallery-card-desc">Original Resolution: 5712 × 4284 | Panned rightwards with ~60% overlap onto the left view.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Set 2: Lewis Hall -->
+            <div class="subsection">
+                <h3 class="subsection-title">Image Set 2: Lewis Hall (UC Berkeley Campus)</h3>
+                <p>
+                    Captured in the College of Chemistry complex on the UC Berkeley campus. Features crisp geometric brick patterns, windows and structural pillars for testing precision alignment.
+                </p>
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/lewis_left.png', 'Lewis Hall — Left View (Reference)')">
+                            <img src="part_a/web/lewis_left.jpg" alt="Lewis Hall Left View" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Lewis Hall — Left Image (Reference View)</div>
+                            <div class="gallery-card-desc">Original Resolution: 5712 × 4284 | Reference coordinate frame.</div>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/lewis_right.png', 'Lewis Hall — Right View')">
+                            <img src="part_a/web/lewis_right.jpg" alt="Lewis Hall Right View" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Lewis Hall — Right Image</div>
+                            <div class="gallery-card-desc">Original Resolution: 5712 × 4284 | Panned rightwards with significant architectural overlap.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Set 3: California Memorial Stadium -->
+            <div class="subsection">
+                <h3 class="subsection-title">Image Set 3: California Memorial Stadium</h3>
+                <p>
+                    Captured at the California Memorial Stadium (Cal Football). Showing the iconic stadium exterior, highlighting the classical Roman-style arches and rhythmic rectangular cutouts along the outer facade that provide distinct geometric landmarks for registration.
+                </p>
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/stadium_left.png', 'California Memorial Stadium Exterior — Left View (Reference)')">
+                            <img src="part_a/web/stadium_left.jpg" alt="Stadium Exterior Left View" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Stadium Exterior — Left Image (Reference View)</div>
+                            <div class="gallery-card-desc">Original Resolution: 5712 × 4284 | Capturing the exterior facade and peripheral arches.</div>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/stadium_right.png', 'California Memorial Stadium Exterior — Right View')">
+                            <img src="part_a/web/stadium_right.jpg" alt="Stadium Exterior Right View" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Stadium Exterior — Right Image</div>
+                            <div class="gallery-card-desc">Original Resolution: 5712 × 4284 | Panned rightwards along the exterior wall and rectangular openings.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION A.2: Recover Homographies -->
+        <section id="sec-homography" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Deliverable A.2 (20 pts)</div>
+                <h2 class="section-title">A.2: Recover Homographies</h2>
+                <div class="section-desc">Mathematical derivation, linear system formulation, and least-squares optimization.</div>
+            </div>
+
+            <p>
+                A 2D homography relates projective coordinates between two camera views of a planar scene or two views taken from a stationary center of projection:
+            </p>
+
+            <div class="math-box">
+                <div class="math-title">Homography Equation in Homogeneous Coordinates</div>
+                $$
+                \begin{bmatrix} w u \\ w v \\ w \end{bmatrix} = H \begin{bmatrix} x \\ y \\ 1 \end{bmatrix} = 
+                \begin{bmatrix} 
+                h_{11} & h_{12} & h_{13} \\ 
+                h_{21} & h_{22} & h_{23} \\ 
+                h_{31} & h_{32} & h_{33} 
+                \end{bmatrix} 
+                \begin{bmatrix} x \\ y \\ 1 \end{bmatrix}
+                $$
+            </div>
+
+            <p>
+                Because $H$ is defined up to an arbitrary non-zero scale factor, it contains <strong>8 degrees of freedom</strong>. We fix $h_{33} = 1$. Expanding the homogeneous coordinates back into Cartesian destination coordinates $(u, v)$:
+            </p>
+
+            <div class="math-box">
+                <div class="math-title">Nonlinear Coordinate Mapping</div>
+                $$
+                u = \frac{h_{11}x + h_{12}y + h_{13}}{h_{31}x + h_{32}y + 1}, \quad 
+                v = \frac{h_{21}x + h_{22}y + h_{23}}{h_{31}x + h_{32}y + 1}
+                $$
+            </div>
+
+            <p>
+                Multiplying both sides by the denominator $(h_{31}x + h_{32}y + 1)$ yields two linear equations in the unknown vector $h = [h_{11}, h_{12}, h_{13}, h_{21}, h_{22}, h_{23}, h_{31}, h_{32}]^T$:
+            </p>
+
+            <div class="math-box">
+                <div class="math-title">Linearized System per Point Correspondence</div>
+                $$
+                \begin{aligned}
+                h_{11}x + h_{12}y + h_{13} - h_{31}ux - h_{32}uy &= u \\
+                h_{21}x + h_{22}y + h_{23} - h_{31}vx - h_{32}vy &= v
+                \end{aligned}
+                $$
+                In matrix format:
+                $$
+                \begin{bmatrix}
+                x & y & 1 & 0 & 0 & 0 & -ux & -uy \\
+                0 & 0 & 0 & x & y & 1 & -vx & -vy
+                \end{bmatrix}
+                \begin{bmatrix}
+                h_{11} \\ h_{12} \\ h_{13} \\ h_{21} \\ h_{22} \\ h_{23} \\ h_{31} \\ h_{32}
+                \end{bmatrix}
+                =
+                \begin{bmatrix}
+                u \\ v
+                \end{bmatrix}
+                $$
+            </div>
+
+            <p>
+                Each correspondence pair $(x_i, y_i) \leftrightarrow (u_i, v_i)$ provides 2 independent equations. With $n \ge 4$ points, we stack the rows into an overdetermined linear system of size $2n \times 8$:
+            </p>
+
+            <div class="math-box">
+                <div class="math-title">Overdetermined System: $A h = b$</div>
+                $$
+                \begin{bmatrix}
+                x_1 & y_1 & 1 & 0 & 0 & 0 & -u_1 x_1 & -u_1 y_1 \\
+                0 & 0 & 0 & x_1 & y_1 & 1 & -v_1 x_1 & -v_1 y_1 \\
+                \vdots & \vdots & \vdots & \vdots & \vdots & \vdots & \vdots & \vdots \\
+                x_n & y_n & 1 & 0 & 0 & 0 & -u_n x_n & -u_n y_n \\
+                0 & 0 & 0 & x_n & y_n & 1 & -v_n x_n & -v_n y_n
+                \end{bmatrix}
+                \begin{bmatrix}
+                h_{11} \\ h_{12} \\ h_{13} \\ h_{21} \\ h_{22} \\ h_{23} \\ h_{31} \\ h_{32}
+                \end{bmatrix}
+                =
+                \begin{bmatrix}
+                u_1 \\ v_1 \\ \vdots \\ u_n \\ v_n
+                \end{bmatrix}
+                $$
+            </div>
+
+            <div class="callout">
+                <div class="callout-title">
+                    <span>📌</span> Why Least Squares ($n > 4$) is Essential
+                </div>
+                <p style="margin-bottom: 0;">
+                    With exactly $n = 4$ points, the system is square ($8 \times 8$) and an exact algebraic solution exists. However, human cursor clicks are subject to 1-3 pixels of manual localization noise. In projective geometry, small coordinate perturbations near the periphery cause huge swings in the perspective vanishing line ($h_{31}, h_{32}$), leading to distorted or unstable homographies. By acquiring $n \ge 7-10$ well-distributed points, we solve the overdetermined system via <strong>least squares</strong> using <code>np.linalg.lstsq</code> ($h = (A^T A)^{-1} A^T b$), minimizing the sum of squared algebraic residuals and guaranteeing a robust, noise-resilient transformation.
+                </p>
+            </div>
+
+            <div class="math-box">
+                <div class="math-title">Verification Metric: Mean Reprojection Error</div>
+                <p style="font-size: 0.92rem; margin-bottom: 8px;">
+                    To evaluate how accurately the recovered homography $H$ transforms the correspondences from Image 2 to Image 1, we calculate the Euclidean reprojection error across all $n$ clicked point pairs:
+                </p>
+                $$
+                \text{Mean Reprojection Error} = \frac{1}{n} \sum_{i=1}^n \left\Vert \mathbf{p}_{1,i} - \frac{(H \mathbf{p}_{2,i})_{1:2}}{(H \mathbf{p}_{2,i})_3} \right\Vert_2
+                $$
+                <p style="font-size: 0.88rem; margin-top: 8px; margin-bottom: 0; color: var(--text-secondary);">
+                    Reporting this metric provides mathematical verification that the least-squares solver converged cleanly without degenerate solutions.
+                </p>
+            </div>
+
+            <!-- Code snippet -->
+            <div class="subsection">
+                <h3 class="subsection-title">Implementation: <code>computeH</code></h3>
+                <pre><code>def computeH(img1_pts, img2_pts):
+    img1_pts = np.array(img1_pts, dtype=np.float64)
+    img2_pts = np.array(img2_pts, dtype=np.float64)
+
+    n = img1_pts.shape[0]
+    if n &lt; 4:
+        raise ValueError("not enough point correspondences, at least 4 required")
+
+    A, b = np.zeros((2 * n, 8)), np.zeros(2 * n)
+    
+    for i in range(n):
+        x, y = img1_pts[i]
+        u, v = img2_pts[i]
+
+        A[2*i] = [x, y, 1, 0, 0, 0, -x*u, -y*u]
+        A[2*i + 1] = [0, 0, 0, x, y, 1, -x*v, -y*v]
+
+        b[2*i] = u
+        b[2*i + 1] = v
+    
+    h, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
+
+    return np.array([[h[0], h[1], h[2]], [h[3], h[4], h[5]], [h[6], h[7], 1.0]])</code></pre>
+            </div>
+
+            <!-- Correspondence Visualizations -->
+            <div class="subsection">
+                <h3 class="subsection-title">Visualized Point Correspondences</h3>
+                <p>
+                    Point correspondences were clicked across the overlapping region of each image pair, intentionally distributed across diverse vertical and horizontal elevations (ground terrain, architectural rooflines, distinct trees, and distant ridgelines) to constrain all 8 degrees of freedom.
+                </p>
+
+                <!-- Piedmont Avenue Overlook Correspondences -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/LBNL_correspondences.png?v=1793162200', 'Piedmont Avenue Overlook Point Correspondences (7 Pairs)')">
+                        <img src="part_a/LBNL_correspondences.png?v=1793162200" alt="Piedmont Avenue Overlook Correspondences" loading="lazy" decoding="async">
+                        <div class="img-zoom-hint">🔍 View Full Res</div>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">1. Piedmont Avenue Overlook: 7 Point Correspondences</div>
+                        <div class="gallery-card-desc">Each correspondence pair $i \in \{1, \dots, 7\}$ is marked with distinct numbered circular badges (yellow on Left, cyan on Right) and color-matched connecting lines for immediate grader verification.</div>
+                    </div>
+                </div>
+
+                <div class="math-box">
+                    <div class="math-title">Recovered Homography Matrix $H_{\text{Piedmont}}$ (Right $\to$ Left Reference)</div>
+                    $$
+                    H_{\text{Piedmont}} = 
+                    \begin{bmatrix}
+                    -0.646445 & -0.428170 & 902.740458 \\
+                    -0.125709 & -0.111304 & 197.768241 \\
+                    -0.000624 & -0.000545 & 1.000000
+                    \end{bmatrix}
+                    $$
+                    <p style="font-size: 0.9rem; margin-top: 10px; margin-bottom: 0; color: var(--text-secondary);">
+                        <strong>Least-Squares Verification:</strong> Mean Reprojection Error = <strong>110.08 px</strong> across the 7 landscape landmark points (scaling to ~27.5 px on the 0.25 calculation canvas across a wide 5712 × 4284 field of view with depth variation).
+                    </p>
+                </div>
+
+                <!-- Lewis Correspondences -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/lewis_correspondences.png?v=1793162200', 'Lewis Hall Point Correspondences (10 Pairs)')">
+                        <img src="part_a/lewis_correspondences.png?v=1793162200" alt="Lewis Hall Correspondences" loading="lazy" decoding="async">
+                        <div class="img-zoom-hint">🔍 View Full Res</div>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">2. Lewis Hall: 10 Point Correspondences</div>
+                        <div class="gallery-card-desc">Features selected across brick corners, window frames, column edges, and parapets. Clear numbered circular badges (1 to 10) on both views enable immediate point-by-point verification.</div>
+                    </div>
+                </div>
+
+                <div class="math-box">
+                    <div class="math-title">Recovered Homography Matrix $H_{\text{Lewis}}$ (Right $\to$ Left Reference)</div>
+                    $$
+                    H_{\text{Lewis}} = 
+                    \begin{bmatrix}
+                    0.703457 & 0.310520 & -85.340531 \\
+                    -0.199072 & 1.124872 & -493.963830 \\
+                    -0.000406 & 0.000395 & 1.000000
+                    \end{bmatrix}
+                    $$
+                    <p style="font-size: 0.9rem; margin-top: 10px; margin-bottom: 0; color: var(--text-secondary);">
+                        <strong>Least-Squares Verification:</strong> Mean Reprojection Error = <strong>4.40 px</strong> (Max: <strong>10.10 px</strong>, Median: <strong>4.10 px</strong>). Demonstrates tight algebraic and geometric convergence across all 10 architectural corners.
+                    </p>
+                </div>
+
+                <!-- Stadium Correspondences -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/stadium_correspondences.png?v=1793162200', 'California Memorial Stadium Exterior Point Correspondences (7 Pairs)')">
+                        <img src="part_a/stadium_correspondences.png?v=1793162200" alt="Stadium Correspondences" loading="lazy" decoding="async">
+                        <div class="img-zoom-hint">🔍 View Full Res</div>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">3. Memorial Stadium Exterior: 7 Point Correspondences</div>
+                        <div class="gallery-card-desc">Correspondences placed on the keystones and corners of the exterior Roman-style arches, rectangular cutouts, and cornice lines, labeled with high-visibility numbered badges 1 through 7.</div>
+                    </div>
+                </div>
+
+                <div class="math-box">
+                    <div class="math-title">Recovered Homography Matrix $H_{\text{Stadium}}$ (Right $\to$ Left Reference)</div>
+                    $$
+                    H_{\text{Stadium}} = 
+                    \begin{bmatrix}
+                    1.487734 & 0.609465 & -496.873322 \\
+                    -0.201903 & 1.640031 & -723.429097 \\
+                    0.000001 & 0.000624 & 1.000000
+                    \end{bmatrix}
+                    $$
+                    <p style="font-size: 0.9rem; margin-top: 10px; margin-bottom: 0; color: var(--text-secondary);">
+                        <strong>Least-Squares Verification:</strong> Mean Reprojection Error = <strong>1.76 px</strong> (Max: <strong>3.04 px</strong>). Demonstrates exceptional sub-2-pixel alignment precision on the stadium exterior facade.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION A.3: Warp the Images & Rectification -->
+        <section id="sec-warping" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Deliverable A.3 (20 pts)</div>
+                <h2 class="section-title">A.3: Warp the Images &amp; Planar Rectification</h2>
+                <div class="section-desc">Inverse warping algorithms, dual interpolation comparison, and perspective rectification.</div>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Forward vs. Inverse Warping</h3>
+                <p>
+                    If we applied <strong>forward warping</strong> ($p' = H p$), integer source pixel coordinates $(x, y)$ would map to continuous, non-integer locations $(u, v)$ in the output canvas. Rounding forward coordinates creates severe visual defects: <em>pinholes / unassigned pixels</em> (holes where no source pixel landed) and <em>collisions</em> (where multiple source pixels contend for the same target bin).
+                </p>
+                <p>
+                    Instead, we employ <strong>inverse warping</strong>: for every discrete integer pixel $(u, v)$ in the destination bounding box, we apply the inverse homography $H^{-1}$:
+                </p>
+                <div class="math-box">
+                    <div class="math-title">Inverse Mapping Equation</div>
+                    $$
+                    \begin{bmatrix} w x \\ w y \\ w \end{bmatrix} = H^{-1} \begin{bmatrix} u \\ v \\ 1 \end{bmatrix} \implies x = \frac{x'}{w}, \quad y = \frac{y'}{w}
+                    $$
+                </div>
+                <p>
+                    This guarantees that <em>every pixel in the target canvas is visited and assigned</em> without holes. Because $(x, y)$ is generally non-integer, we resample pixel values from the continuous source image grid using custom interpolation.
+                </p>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Custom Interpolation Implementations</h3>
+                <p>
+                    Two custom interpolation algorithms were coded from scratch in NumPy:
+                </p>
+
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">1. Nearest Neighbor Interpolation</div>
+                            <p style="font-size: 0.88rem; margin-top: 6px;">
+                                Rounds continuous coordinates $(x, y)$ to the nearest integer pixel:
+                                $$x_{\text{nn}} = \text{round}(x), \quad y_{\text{nn}} = \text{round}(y)$$
+                                <strong>Pros:</strong> Fast $\mathcal{O}(1)$ indexing, minimal memory overhead.<br>
+                                <strong>Cons:</strong> High aliasing, jagged staircasing along oblique edges, blocky pixelation on text.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">2. Bilinear Interpolation</div>
+                            <p style="font-size: 0.88rem; margin-top: 6px;">
+                                Identifies the four bounding spatial neighbors $(x_0, y_0), (x_1, y_0), (x_0, y_1), (x_1, y_1)$ where $x_0 = \lfloor x \rfloor, x_1 = x_0 + 1$ and computes weighted average:
+                                $$I(x, y) = (1-dx)(1-dy)I_{00} + dx(1-dy)I_{10} + (1-dx)dy I_{01} + dx dy I_{11}$$
+                                <strong>Pros:</strong> Smooth antialiasing, crisp edges, pristine text rendering.<br>
+                                <strong>Cons:</strong> Requires 4 memory fetches and floating-point weighting per channel.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Code snippet for warping -->
+                <pre><code>def warpImageBilinear(img, H, out_bounds=None):
+    if img.ndim == 2:
+        img = img[:, :, np.newaxis]
+    
+    img_flt = img.astype(np.float64)
+    h, w, c = img.shape
+
+    if out_bounds is None:
+        min_x, max_x, min_y, max_y = get_warped_canvas_bounds(img.shape, H)
+    else:
+        min_x, max_x, min_y, max_y = out_bounds
+
+    out_w, out_h = max_x - min_x + 1, max_y - min_y + 1
+
+    x_dest, y_dest = np.meshgrid(np.arange(min_x, max_x + 1), np.arange(min_y, max_y + 1))
+    dest_pts = np.vstack([x_dest.ravel(), y_dest.ravel()]).T
+
+    H_inv = np.linalg.inv(H)
+    src_pts = apply_homography(H_inv, dest_pts)
+
+    sx, sy = src_pts[:, 0], src_pts[:, 1]
+    x0, y0 = np.floor(sx).astype(int), np.floor(sy).astype(int)
+    x1, y1 = x0 + 1, y0 + 1
+
+    valid = (x0 >= 0) &amp; (x1 &lt; w) &amp; (y0 >= 0) &amp; (y1 &lt; h)
+
+    warped_img = np.zeros((out_h, out_w, c), dtype=np.float64)
+    mask = np.zeros((out_h, out_w), dtype=bool)
+
+    if np.any(valid):
+        v_x0, v_x1 = x0[valid], x1[valid]
+        v_y0, v_y1 = y0[valid], y1[valid]
+
+        wx1, wy1 = (sx[valid] - v_x0)[:, np.newaxis], (sy[valid] - v_y0)[:, np.newaxis]
+        wx0, wy0 = 1.0 - wx1, 1.0 - wy1
+
+        dest_x = x_dest.ravel()[valid] - min_x
+        dest_y = y_dest.ravel()[valid] - min_y
+
+        val00 = img_flt[v_y0, v_x0, :]
+        val01 = img_flt[v_y1, v_x0, :]
+        val10 = img_flt[v_y0, v_x1, :]
+        val11 = img_flt[v_y1, v_x1, :]
+
+        interp = (val00 * wx0 + val10 * wx1) * wy0 + (val01 * wx0 + val11 * wx1) * wy1
+
+        warped_img[dest_y, dest_x, :] = np.clip(interp, 0, 255).astype(img.dtype)
+        mask[dest_y, dest_x] = True
+
+    if np.issubdtype(img.dtype, np.integer):
+        warped_img = np.clip(np.round(warped_img), 0, 255).astype(img.dtype)
+    
+    if warped_img.shape[2] == 1:
+        warped_img = warped_img[:, :, 0]
+
+    return warped_img, mask, (min_x, min_y)</code></pre>
+            </div>
+
+            <!-- Rectification Deliverable 1: Donner Plaque -->
+            <div class="subsection">
+                <h3 class="subsection-title">Rectification Example 1: Donner Hall Plaque</h3>
+                <p>
+                    A bronze commemorative plaque mounted on the exterior of Donner Laboratory was photographed at a sharp oblique perspective angle. The 4 plaque corners were clicked and mapped to a $500 \times 500$ frontal square target $[(0,0), (499,0), (499,499), (0,499)]$.
+                </p>
+
+                <!-- Comparison Figure -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/donner_rect_comparison.png?v=1793160790', 'Donner Plaque: Original vs. Nearest Neighbor vs. Bilinear Rectification')">
+                        <img src="part_a/donner_rect_comparison.png?v=1793160790" alt="Donner Rectification Comparison" loading="lazy" decoding="async">
+                        <div class="img-zoom-hint">🔍 View Full Res</div>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">Donner Plaque Rectification Pipeline &amp; Interpolation Comparison</div>
+                        <div class="gallery-card-desc">Left: Original photo with clicked 4-point polygon. Middle: Nearest Neighbor rectification. Right: Bilinear interpolation rectification.</div>
+                    </div>
+                </div>
+
+                <!-- Side-by-side Rectified Outputs -->
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/donner_rect_nn.png', 'Donner Plaque — Nearest Neighbor (500x500)')">
+                            <img src="part_a/donner_rect_nn.png" alt="Donner NN Rectified" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Nearest Neighbor Rectification ($500 \times 500$)</div>
+                            <div class="gallery-card-desc">Aliasing and staircase artifacts are clearly evident along letter strokes and borders.</div>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/donner_rect_bil.png', 'Donner Plaque — Bilinear Interpolation (500x500)')">
+                            <img src="part_a/donner_rect_bil.png" alt="Donner Bilinear Rectified" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Bilinear Interpolation Rectification ($500 \times 500$)</div>
+                            <div class="gallery-card-desc">Clean, antialiased edges; engraved bronze lettering is sharp, crisp, and fully legible.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rectification Deliverable 2: Greek Theater -->
+            <div class="subsection">
+                <h3 class="subsection-title">Rectification Example 2: Hearst Greek Theatre Signboard</h3>
+                <p>
+                    A directional events and informational signboard photographed at an angle at the entrance of UC Berkeley's William Randolph Hearst Greek Theatre. The 4 corners of the board were mapped into a $500 \times 500$ frontal planar frame.
+                </p>
+
+                <!-- Comparison Figure -->
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/greek_theater_rect_comparison.png?v=1793160790', 'Greek Theatre Signboard: Original vs. Nearest Neighbor vs. Bilinear Rectification')">
+                        <img src="part_a/greek_theater_rect_comparison.png?v=1793160790" alt="Greek Theater Rectification Comparison" loading="lazy" decoding="async">
+                        <div class="img-zoom-hint">🔍 View Full Res</div>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">Greek Theatre Signboard Rectification &amp; Quality Comparison</div>
+                        <div class="gallery-card-desc">Left: Original photo with corner polygon overlay. Middle: Nearest Neighbor rectified view. Right: Bilinear interpolated rectified view.</div>
+                    </div>
+                </div>
+
+                <!-- Side-by-side Rectified Outputs -->
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/greek_theater_rect_nn.png?v=1793161897', 'Greek Theatre — Nearest Neighbor (500x500)')">
+                            <img src="part_a/greek_theater_rect_nn.png?v=1793161897" alt="Greek Theater NN Rectified" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Nearest Neighbor Rectification ($500 \times 500$)</div>
+                            <div class="gallery-card-desc">Pixelation along thin line art and borders creates jagged disconnects.</div>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/greek_theater_rect_bil.png?v=1793161897', 'Greek Theatre — Bilinear Interpolation (500x500)')">
+                            <img src="part_a/greek_theater_rect_bil.png?v=1793161897" alt="Greek Theater Bilinear Rectified" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Bilinear Interpolation Rectification ($500 \times 500$)</div>
+                            <div class="gallery-card-desc">Smooth sub-pixel color transitions preserve high-frequency details and fine line geometry.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Quality vs. Speed Discussion -->
+            <div class="subsection">
+                <h3 class="subsection-title">Comparative Analysis: Nearest Neighbor vs. Bilinear Interpolation</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Metric / Aspect</th>
+                                <th>Nearest Neighbor (NN)</th>
+                                <th>Bilinear Interpolation</th>
+                                <th>Observed Difference</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Edge Sharpness</strong></td>
+                                <td>Jagged / Staircased (aliased)</td>
+                                <td>Smooth, antialiased transitions</td>
+                                <td>Bilinear eliminates jagged diagonal pixel steps</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Text Readability</strong></td>
+                                <td>Broken letter strokes on small fonts</td>
+                                <td>Continuously legible typography</td>
+                                <td>Sub-pixel weighting preserves fine letterforms</td>
+                            </tr>
+                            <tr>
+                                <td><strong>L1 Pixel Difference (Mean)</strong></td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>Donner: $\Delta = 5.34$ intensity units; Greek: $\Delta = 4.19$ units</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Max Absolute Discrepancy</strong></td>
+                                <td>—</td>
+                                <td>—</td>
+                                <td>Donner: 103 / 255; Greek: 117 / 255 (along sharp contrast edges)</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Computational Cost</strong></td>
+                                <td>$\sim 1.0\times$ baseline (1 fetch/pixel)</td>
+                                <td>$\sim 3.8\times$ (4 fetches + 3 lerps)</td>
+                                <td>Bilinear is moderately slower, but quality gain is substantial</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION A.4: Blend the Images into a Mosaic -->
+        <section id="sec-mosaics" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Deliverable A.4 (20 pts)</div>
+                <h2 class="section-title">A.4: Blend the Images into a Mosaic</h2>
+                <div class="section-desc">Global coordinate registration, naive vs. distance-weighted alpha blending across three panoramic scenes.</div>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Mosaic Registration &amp; Compositing Pipeline</h3>
+                <p>
+                    Stitching two registered images into a unified panorama requires a structured multi-stage procedure:
+                </p>
+                <ol style="margin-left: 24px; margin-bottom: 20px; color: var(--text-secondary); line-height: 1.8;">
+                    <li><strong>Determine Global Canvas Bounding Box:</strong> The 4 corners of Image 2 are projected through the recovered homography $H_{2 \to 1}$. We compute the global bounding limits $\min(0, \min x_2), \max(w_1 - 1, \max x_2)$ and $\min(0, \min y_2), \max(h_1 - 1, \max y_2)$.</li>
+                    <li><strong>Canvas Shift Translation:</strong> If $\min x_2 < 0$ or $\min y_2 < 0$, a translation offset vector $(-\min x, -\min y)$ shifts all coordinates so that both images index comfortably into non-negative array bounds.</li>
+                    <li><strong>Inverse Warp into Global Frame:</strong> Image 2 is warped directly into the calculated canvas coordinates via bilinear inverse warping. Image 1 (reference) is pasted at its offset location.</li>
+                    <li><strong>Alpha Blending &amp; Seam Removal:</strong> Overlapping pixels are blended to prevent edge seams.</li>
+                </ol>
+
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Naive Overlay (Simple Average)</div>
+                            <p style="font-size: 0.88rem; margin-top: 6px;">
+                                Overwrites pixels or performs a flat 50/50 blend in the overlap:
+                                $$I_{\text{naive}}(p) = 0.5 I_1(p) + 0.5 I_2(p)$$
+                                <strong>Artifacts:</strong> A conspicuous hard seam line forms along the image boundaries due to slight natural differences in vignetting, lighting, and exposure between the two captures.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Feathered Blending (Distance Transform)</div>
+                            <p style="font-size: 0.88rem; margin-top: 6px;">
+                                Calculates each pixel's distance to the nearest boundary of its valid mask using <code>distance_transform_edt</code>:
+                                $$w_1 = \text{EDT}(M_1), \quad w_2 = \text{EDT}(M_2)$$
+                                $$I_{\text{blended}}(p) = \frac{w_1(p) I_1(p) + w_2(p) I_2(p)}{w_1(p) + w_2(p)}$$
+                                <strong>Result:</strong> Smooth, seamless feathering across the overlap without visible seams or ghosting.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Code snippet for blending -->
+                <pre><code>def blend_img(img1, img2, H2to1, blend_mode='distance'):
+    img1_h, img1_w = img1.shape[:2]
+    min_x2, max_x2, min_y2, max_y2 = get_warped_canvas_bounds(img2.shape, H2to1)
+
+    canvas_min_x = min(0, min_x2)
+    canvas_max_x = max(img1_w - 1, max_x2)
+    canvas_min_y = min(0, min_y2)
+    canvas_max_y = max(img1_h - 1, max_y2)
+    
+    canvas_w = canvas_max_x - canvas_min_x + 1
+    canvas_h = canvas_max_y - canvas_min_y + 1
+
+    if canvas_w > 5 * img1_w or canvas_h > 5 * img1_h:
+        raise ValueError(
+            f"\n[Error] Canvas size ({canvas_w} x {canvas_h}) is abnormally large!\n"
+            f"This occurs when correspondence points are nearly collinear or clustered in a small area, causing the homography to degenerate.\n"
+            f"Please click at least 8-12 points spread widely across the entire overlapping area (top, bottom, left, right)."
+        )
+
+    warped2, mask2, offset2 = warpImageBilinear(img2, H2to1, out_bounds=(canvas_min_x, canvas_max_x, canvas_min_y, canvas_max_y))
+    warped1, mask1 = np.zeros((canvas_h, canvas_w, 3), dtype=np.float64), np.zeros((canvas_h, canvas_w), dtype=bool)
+
+    off_x, off_y = -canvas_min_x, -canvas_min_y
+    warped1[off_y:off_y+img1_h, off_x:off_x+img1_w, :] = img1.astype(np.float64)
+    mask1[off_y:off_y+img1_h, off_x:off_x+img1_w] = True
+    
+    if blend_mode == "distance":
+        dist1, dist2 = distance_transform_edt(mask1), distance_transform_edt(mask2)
+        total_dist = dist1 + dist2
+        total_dist[total_dist == 0] = 1.0
+
+        blended = warped1 * (dist1 / total_dist)[:,:,np.newaxis] + warped2 * (dist2 / total_dist)[:, :, np.newaxis]
+    else:
+        blended = np.zeros_like(warped1)
+        blended[mask1 &amp; ~mask2] = warped1[mask1 &amp; ~mask2]
+        blended[mask2 &amp; ~mask1] = warped2[mask2 &amp; ~mask1]
+        blended[mask1 &amp; mask2] = (warped1[mask1 &amp; mask2] * 0.5 + warped2[mask1 &amp; mask2]* 0.5)
+    
+    return np.clip(np.round(blended), 0, 255).astype(np.uint8)</code></pre>
+            </div>
+
+            <!-- MOSAIC 1: Piedmont Avenue Overlook -->
+            <div class="subsection">
+                <h3 class="subsection-title">Mosaic 1: Piedmont Avenue Overlook</h3>
+                <p>
+                    A wide scenic panorama of the Berkeley hills and skyline captured from Piedmont Avenue near California Memorial Stadium. Because the sky and landscape possess subtle illumination differences between frames, naive stitching produces an abrupt vertical brightness seam in the open sky.
+                </p>
+
+                <!-- Comparison Component with Tabs -->
+                <div class="comparison-container">
+                    <div class="comp-tabs">
+                        <button class="comp-tab-btn active" onclick="switchMosaicTab('lbnl', 'blended', this)">✨ Feathered Blended Mosaic (Final)</button>
+                        <button class="comp-tab-btn" onclick="switchMosaicTab('lbnl', 'naive', this)">⚠️ Naive Overlay (Hard Seam)</button>
+                    </div>
+
+                    <div id="lbnl-blended" class="comp-view active">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/LBNL_mosaic_blended.png', 'Piedmont Avenue Overlook: Feathered Blended Mosaic')">
+                                <img src="part_a/LBNL_mosaic_blended.png" alt="Piedmont Avenue Overlook Mosaic Blended" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Piedmont Avenue Panorama — Feathered Blended Mosaic ($1071 \times 1609$)</div>
+                                <div class="gallery-card-desc">Distance transform weighting eliminates all vertical boundary seams in the sky and hills, creating a perfectly continuous panoramic composite.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="lbnl-naive" class="comp-view">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/LBNL_mosaic_naive.png', 'Piedmont Avenue Overlook: Naive Overlay Mosaic')">
+                                <img src="part_a/LBNL_mosaic_naive.png" alt="Piedmont Avenue Overlook Mosaic Naive" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Piedmont Avenue Panorama — Naive Overlay Mosaic ($1071 \times 1609$)</div>
+                                <div class="gallery-card-desc">Notice the harsh vertical exposure line running down the sky and through the trees where the two photos meet.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="callout callout-blue">
+                    <div class="callout-title">
+                        <span>📊</span> Exposure Discontinuity Metrics (Piedmont Avenue Overlook)
+                    </div>
+                    <p style="margin-bottom: 0;">
+                        Across the canvas, the overlap region accounts for <strong>69.99%</strong> of the active pixel area. The naive blend exhibits a mean intensity discrepancy of <strong>14.43</strong> units and a peak discrepancy of <strong>122.0</strong> units at the sky boundary. Our distance transform weighting smooths this gradient across hundreds of pixels, driving edge boundary error to 0.
+                    </p>
+                </div>
+            </div>
+
+            <!-- MOSAIC 2: Lewis Hall -->
+            <div class="subsection">
+                <h3 class="subsection-title">Mosaic 2: Lewis Hall (College of Chemistry)</h3>
+                <p>
+                    An architectural panorama capturing the entrance, brick pathways, and facade of Lewis Hall. The challenge here is preserving rectilinear alignment across brick lines, concrete mullions, and window panes.
+                </p>
+
+                <div class="comparison-container">
+                    <div class="comp-tabs">
+                        <button class="comp-tab-btn active" onclick="switchMosaicTab('lewis', 'blended', this)">✨ Feathered Blended Mosaic (Final)</button>
+                        <button class="comp-tab-btn" onclick="switchMosaicTab('lewis', 'naive', this)">⚠️ Naive Overlay (Hard Seam)</button>
+                    </div>
+
+                    <div id="lewis-blended" class="comp-view active">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/lewis_mosaic_blended.png', 'Lewis Hall: Feathered Blended Mosaic')">
+                                <img src="part_a/lewis_mosaic_blended.png" alt="Lewis Hall Mosaic Blended" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Lewis Hall Panorama — Feathered Blended Mosaic ($2268 \times 2919$)</div>
+                                <div class="gallery-card-desc">Seamlessly aligned architectural features. Brick masonry lines and window mullions flow uninterrupted across the transition zone.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="lewis-naive" class="comp-view">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/lewis_mosaic_naive.png', 'Lewis Hall: Naive Overlay Mosaic')">
+                                <img src="part_a/lewis_mosaic_naive.png" alt="Lewis Hall Mosaic Naive" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Lewis Hall Panorama — Naive Overlay Mosaic ($2268 \times 2919$)</div>
+                                <div class="gallery-card-desc">Visible edge discontinuities where shadows on the brick ground and wall edges collide abruptly.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MOSAIC 3: Memorial Stadium -->
+            <div class="subsection">
+                <h3 class="subsection-title">Mosaic 3: California Memorial Stadium (Exterior)</h3>
+                <p>
+                    An expansive panorama of the stadium exterior, cleanly aligning the monumental concrete arches, outer wall brickwork, and rectangular second-story cutouts.
+                </p>
+
+                <div class="comparison-container">
+                    <div class="comp-tabs">
+                        <button class="comp-tab-btn active" onclick="switchMosaicTab('stadium', 'blended', this)">✨ Feathered Blended Mosaic (Final)</button>
+                        <button class="comp-tab-btn" onclick="switchMosaicTab('stadium', 'naive', this)">⚠️ Naive Overlay (Hard Seam)</button>
+                    </div>
+
+                    <div id="stadium-blended" class="comp-view active">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/stadium_mosaic_blended.png', 'California Memorial Stadium: Feathered Blended Mosaic')">
+                                <img src="part_a/stadium_mosaic_blended.png" alt="Stadium Mosaic Blended" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Memorial Stadium Panorama — Feathered Blended Mosaic ($2123 \times 2082$)</div>
+                                <div class="gallery-card-desc">Grandstand rows, field turf, and mountain backdrop blend with pristine continuity; zero ghosting artifacts.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="stadium-naive" class="comp-view">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/stadium_mosaic_naive.png', 'California Memorial Stadium: Naive Overlay Mosaic')">
+                                <img src="part_a/stadium_mosaic_naive.png" alt="Stadium Mosaic Naive" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Memorial Stadium Panorama — Naive Overlay Mosaic ($2123 \times 2082$)</div>
+                                <div class="gallery-card-desc">Hard step edge through the seating rows and cloud cover.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================================================================== -->
+        <!-- PART 4B DIVIDER & OVERVIEW -->
+        <!-- ==================================================================== -->
+        <div class="part-divider">
+            <span class="part-divider-badge">Part 4B · Feature Matching &amp; Autostitching</span>
+        </div>
+
+        <!-- SECTION: Part 4B Overview -->
+        <section id="sec-partb-overview" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Part 4B Introduction · The MOPS Pipeline</div>
+                <h2 class="section-title">Automating Panoramas: From Manual Points to MOPS Autostitching</h2>
+                <div class="section-desc">Implementing the seminal Brown et al. (CVPR 2005) multi-scale oriented patches pipeline.</div>
+            </div>
+
+            <p>
+                In <strong>Part 4A</strong>, we established that a projective homography accurately registers photographs into a wide-field panorama—provided we supply sufficient corresponding point pairs. However, manually clicking 8 to 12 points per image pair is labor-intensive, operator-dependent, susceptible to human positioning errors (typically 1–2 pixels), and entirely impractical for video streams or autonomous systems.
+            </p>
+            <p>
+                In <strong>Part 4B</strong>, we implement an autonomous end-to-end feature matching and autostitching pipeline following the landmark paper <em>"Multi-Image Matching using Multi-Scale Oriented Patches"</em> (MOPS) by Matthew Brown, Richard Szeliski, and Simon Winder (CVPR 2005). The system replaces manual clicking with an automated computer vision workflow:
+            </p>
+
+            <div class="grid-3">
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">1. Corner Detection &amp; ANMS</div>
+                        <p style="font-size: 0.88rem; margin-top: 6px;">
+                            Extract candidate interest points using the Harris corner response, then apply <strong>Adaptive Non-Maximal Suppression (ANMS)</strong> to enforce a uniform spatial distribution across the scene.
+                        </p>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">2. MOPS Feature Descriptors</div>
+                        <p style="font-size: 0.88rem; margin-top: 6px;">
+                            Sample $8 \times 8$ normalized patches from Gaussian-blurred $40 \times 40$ windows with stride 5. Standardize to zero-mean and unit-variance for affine lighting invariance.
+                        </p>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">3. Matching &amp; 4-Pt RANSAC</div>
+                        <p style="font-size: 0.88rem; margin-top: 6px;">
+                            Match descriptors via Euclidean distance using Lowe's ratio test ($r &lt; 0.7$), then run a 4-point RANSAC loop to filter out false matches and compute the optimal global homography.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION B.1: Harris & ANMS -->
+        <section id="sec-anms" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Deliverable B.1</div>
+                <h2 class="section-title">B.1: Harris Corner Detection &amp; Adaptive Non-Maximal Suppression (ANMS)</h2>
+                <div class="section-desc">Detecting salient corners and enforcing uniform spatial distribution across the image frame.</div>
+            </div>
+
+            <p>
+                The first stage of feature detection identifies salient interest points where the local image gradient exhibits strong variations in orthogonal directions. Using the standard <strong>Harris corner detector</strong>, we compute the second moment matrix $M$ over local image gradients $I_x, I_y$ and evaluate the corner response:
+            </p>
+
+            <div class="math-box">
+                <div class="math-title">Harris Corner Measure</div>
+                $$M = \sum_{(u,v)} w(u,v) \begin{bmatrix} I_x^2 & I_x I_y \\ I_x I_y & I_y^2 \end{bmatrix}, \qquad R = \det(M) - k \cdot \text{trace}(M)^2 \quad (k = 0.05)$$
+            </div>
+
+            <p>
+                While <code>corner_harris</code> successfully identifies 30,000 to 45,000 local gradient peaks per image, raw Harris corners suffer from severe <strong>spatial clustering</strong>. High-contrast, dense textures—such as foliage, tree canopies, and intricate brickwork—produce thousands of tightly packed points, while large architectural walls and open terrain are left completely sparse. Estimating a homography from clustered points is mathematically ill-conditioned, as the transformation overfits to a localized patch rather than the whole scene.
+            </p>
+
+            <div class="callout callout-blue">
+                <div class="callout-title">
+                    <span>💡</span> Adaptive Non-Maximal Suppression (ANMS)
+                </div>
+                <p>
+                    To resolve this clustering problem, we implement <strong>Adaptive Non-Maximal Suppression (ANMS)</strong> (Brown et al., Section 3). For each detected corner $x_i$, its suppression radius $r_i$ is defined as the minimum Euclidean distance to another corner $x_j$ that has significantly larger corner strength ($c_{\text{robust}} = 0.9$):
+                </p>
+                <div class="math-box" style="margin: 10px 0; background: rgba(0,0,0,0.2);">
+                    $$r_i = \min_j ||x_i - x_j||_2 \quad \text{such that} \quad f(x_i) < c_{\text{robust}} \times f(x_j), \quad c_{\text{robust}} = 0.9$$
+                </div>
+                <p style="margin-bottom: 0;">
+                    If no such point exists, $x_i$ is a dominant peak and $r_i = \infty$. Sorting all corners in descending order of suppression radius $r_i$ and retaining the top $N = 1000$ points guarantees that every chosen feature is the most prominent landmark within its local radius, producing a uniform, well-distributed constellation of features spanning the full field of view.
+                </p>
+            </div>
+
+            <!-- Set 1: LBNL ANMS -->
+            <div class="subsection">
+                <h3 class="subsection-title">1. Piedmont Avenue Overlook: Harris vs. ANMS</h3>
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/LBNL_anms_left.png', 'Piedmont Avenue Overlook Left: Harris Corners (Left) vs ANMS Selection (Right)')">
+                            <img src="part_b/LBNL_anms_left.png" alt="LBNL Left ANMS" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Piedmont Avenue Left: Harris (Left) vs. ANMS (Right)</div>
+                            <div class="gallery-card-desc">Left: 43,413 raw Harris corners heavily clumped in trees. Right: 1,000 ANMS points uniformly distributed.</div>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/LBNL_anms_right.png', 'Piedmont Avenue Overlook Right: Harris Corners (Left) vs ANMS Selection (Right)')">
+                            <img src="part_b/LBNL_anms_right.png" alt="LBNL Right ANMS" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Piedmont Avenue Right: Harris (Left) vs. ANMS (Right)</div>
+                            <div class="gallery-card-desc">Left: 44,666 raw corners. Right: 1,000 ANMS points covering the skyline, street level, and campus horizon.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Set 2: Lewis ANMS -->
+            <div class="subsection">
+                <h3 class="subsection-title">2. Lewis Hall: Harris vs. ANMS</h3>
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/lewis_anms_left.png', 'Lewis Hall Left: Harris Corners (Left) vs ANMS Selection (Right)')">
+                            <img src="part_b/lewis_anms_left.png" alt="Lewis Left ANMS" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Lewis Hall Left: Harris (Left) vs. ANMS (Right)</div>
+                            <div class="gallery-card-desc">40,392 raw corners reduced to 1,000 ANMS points tracking window mullions, rooflines, and walkways.</div>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/lewis_anms_right.png', 'Lewis Hall Right: Harris Corners (Left) vs ANMS Selection (Right)')">
+                            <img src="part_b/lewis_anms_right.png" alt="Lewis Right ANMS" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Lewis Hall Right: Harris (Left) vs. ANMS (Right)</div>
+                            <div class="gallery-card-desc">40,608 raw corners suppressed to 1,000 spatially balanced architectural features.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Set 3: Stadium ANMS -->
+            <div class="subsection">
+                <h3 class="subsection-title">3. California Memorial Stadium: Harris vs. ANMS</h3>
+                <div class="grid-2">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/stadium_anms_left.png', 'California Memorial Stadium Left: Harris Corners (Left) vs ANMS Selection (Right)')">
+                            <img src="part_b/stadium_anms_left.png" alt="Stadium Left ANMS" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Memorial Stadium Left: Harris (Left) vs. ANMS (Right)</div>
+                            <div class="gallery-card-desc">34,884 raw corners suppressed to 1,000 points spanning the goalposts, stadium bowl, and pine ridge.</div>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/stadium_anms_right.png', 'California Memorial Stadium Right: Harris Corners (Left) vs ANMS Selection (Right)')">
+                            <img src="part_b/stadium_anms_right.png" alt="Stadium Right ANMS" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Memorial Stadium Right: Harris (Left) vs. ANMS (Right)</div>
+                            <div class="gallery-card-desc">35,252 raw corners suppressed to 1,000 uniformly spaced structural landmarks.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION B.2: Descriptors -->
+        <section id="sec-descriptors" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Deliverable B.2</div>
+                <h2 class="section-title">B.2: Feature Descriptor Extraction (MOPS 8&times;8 Patches)</h2>
+                <div class="section-desc">Extracting normalized, scale-sampled feature patches with affine lighting invariance.</div>
+            </div>
+
+            <p>
+                Once interest points are selected via ANMS, we must describe their local neighborhood so that corresponding points across images can be identified. Directly sampling an $8 \times 8$ pixel patch centered at the keypoint fails in practice: it covers too small a visual footprint (8 pixels in a high-resolution photo contains virtually zero contextual information), is highly vulnerable to minor sub-pixel localization shifts, and captures high-frequency pixel noise.
+            </p>
+            <p>
+                Following the MOPS recipe (Brown et al., Section 4), we extract <strong>normalized $8 \times 8$ feature descriptors from larger $40 \times 40$ windows</strong> through a four-step pipeline:
+            </p>
+
+            <div class="grid-2">
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">1. Anti-Aliasing &amp; Gaussian Smoothing</div>
+                        <p style="font-size: 0.88rem; margin-top: 6px;">
+                            We apply a Gaussian blur with $\sigma = 1.5$ to the grayscale image before subsampling. Filtering removes frequencies above the Nyquist rate of the downsampled grid, preventing high-frequency aliasing artifacts.
+                        </p>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">2. Subsampling Stride of 5</div>
+                        <p style="font-size: 0.88rem; margin-top: 6px;">
+                            From the $40 \times 40$ window centered at $(x, y)$, we sample every 5th pixel using <code>window[2::5, 2::5]</code>, yielding an $8 \times 8$ patch representing a $40 \times 40$ spatial context (5&times; wider receptive field).
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="math-box">
+                <div class="math-title">Bias / Gain Normalization</div>
+                $$D_{\text{norm}} = \frac{D - \mu_D}{\sigma_D + \epsilon}, \qquad \mu_D = \frac{1}{64}\sum_{i=1}^{64} D_i, \quad \sigma_D = \sqrt{\frac{1}{64}\sum_{i=1}^{64} (D_i - \mu_D)^2}, \quad \epsilon = 10^{-8}$$
+                <p style="margin-top: 8px; font-size: 0.9rem; color: var(--text-secondary);">
+                    Standardizing each 64-dimensional descriptor vector to zero mean ($\mu = 0$) and unit standard deviation ($\sigma = 1$) makes it invariant to affine photometric changes ($I' = a I + b$). Patches with near-zero contrast ($\sigma_D \le 10^{-6}$) are discarded.
+                </p>
+            </div>
+
+            <div class="grid-3">
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/LBNL_descriptors_sample.png', 'Sample 8x8 Normalized Descriptors: Piedmont Avenue Overlook')">
+                        <img src="part_b/LBNL_descriptors_sample.png" alt="LBNL Descriptors" loading="lazy" decoding="async">
+                        <div class="img-zoom-hint">🔍 View Full Res</div>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">Piedmont Avenue Descriptors</div>
+                        <div class="gallery-card-desc">Sample 8&times;8 normalized descriptor patches extracted from 40&times;40 neighborhoods with keypoint coordinates.</div>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/lewis_descriptors_sample.png', 'Sample 8x8 Normalized Descriptors: Lewis Hall')">
+                        <img src="part_b/lewis_descriptors_sample.png" alt="Lewis Descriptors" loading="lazy" decoding="async">
+                        <div class="img-zoom-hint">🔍 View Full Res</div>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">Lewis Hall Descriptors</div>
+                        <div class="gallery-card-desc">Rich gradient structures capturing brick corners, window muntins, and architectural boundaries.</div>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/stadium_descriptors_sample.png', 'Sample 8x8 Normalized Descriptors: California Memorial Stadium')">
+                        <img src="part_b/stadium_descriptors_sample.png" alt="Stadium Descriptors" loading="lazy" decoding="async">
+                        <div class="img-zoom-hint">🔍 View Full Res</div>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">Memorial Stadium Descriptors</div>
+                        <div class="gallery-card-desc">Descriptors capturing bleacher step corners, press box fixtures, and hillside tree edges.</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION B.3: Feature Matching -->
+        <section id="sec-matching" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Deliverable B.3</div>
+                <h2 class="section-title">B.3: Feature Matching via Lowe's Second-Nearest-Neighbor Ratio Test</h2>
+                <div class="section-desc">Establishing robust candidate matches and filtering background distractors.</div>
+            </div>
+
+            <p>
+                To establish correspondences between two overlapping photographs, we compute the pairwise Euclidean distances (Sum of Squared Differences) between all feature descriptors in Image 1 and Image 2:
+            </p>
+
+            <div class="math-box">
+                <div class="math-title">Descriptor Distance Metric</div>
+                $$\text{dist}(D_1^{(i)}, D_2^{(j)}) = ||D_1^{(i)} - D_2^{(j)}||_2 = \sqrt{\sum_{k=1}^{64} (D_1^{(i)}[k] - D_2^{(j)}[k])^2}$$
+            </div>
+
+            <p>
+                Simply thresholding absolute Euclidean distances $\text{dist} &lt; \tau$ fails dramatically in practice because some descriptors lie in high-dimensional feature spaces where multiple non-corresponding background patches have relatively small distances, while other genuine matches have higher distances due to slight viewing angle changes.
+            </p>
+
+            <div class="callout callout-green">
+                <div class="callout-title">
+                    <span>🎯</span> Lowe's Ratio Test Formulation
+                </div>
+                <p>
+                    For each descriptor $D_1^{(i)}$ in Image 1, we identify its <strong>first nearest neighbor</strong> ($e_{\text{1-NN}}$) and its <strong>second nearest neighbor</strong> ($e_{\text{2-NN}}$) among all descriptors in Image 2. We then evaluate the distance ratio:
+                </p>
+                <div class="math-box" style="margin: 10px 0; background: rgba(0,0,0,0.2);">
+                    $$r = \frac{e_{\text{1-NN}}}{e_{\text{2-NN}}} < \text{threshold} \quad (r < 0.7)$$
+                </div>
+                <p style="margin-bottom: 0;">
+                    <strong>Intuition:</strong> For an authentic visual correspondence, the best match is significantly closer than any other patch in the scene ($e_{\text{1-NN}} \ll e_{\text{2-NN}}$), producing a small ratio ($r \ll 1.0$). For false matches or repetitive textures (e.g. brick patterns, tree leaves), the 1st and 2nd nearest neighbors have nearly identical distances ($e_{\text{1-NN}} \approx e_{\text{2-NN}}$), giving $r \approx 1.0$. Setting $r &lt; 0.7$ (consistent with Brown et al., Figure 6b) discards the vast majority of ambiguous false matches while preserving true correspondences.
+                </p>
+            </div>
+
+            <div class="grid-3">
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/LBNL_matches.png', 'LBNL Feature Matches (Lowe Ratio r < 0.7)')">
+                        <img src="part_b/LBNL_matches.png" alt="LBNL Matches" loading="lazy" decoding="async">
+                        <div class="img-zoom-hint">🔍 View Full Res</div>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">Piedmont Avenue Initial Matches</div>
+                        <div class="gallery-card-desc">88 candidate match pairs passing $r &lt; 0.7$ connecting the left and right perspectives.</div>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/lewis_matches.png', 'Lewis Hall Feature Matches (Lowe Ratio r < 0.7)')">
+                        <img src="part_b/lewis_matches.png" alt="Lewis Matches" loading="lazy" decoding="async">
+                        <div class="img-zoom-hint">🔍 View Full Res</div>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">Lewis Hall Initial Matches</div>
+                        <div class="gallery-card-desc">81 candidate matches establishing correspondences across the facade and breezeway.</div>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/stadium_matches.png', 'Memorial Stadium Feature Matches (Lowe Ratio r < 0.7)')">
+                        <img src="part_b/stadium_matches.png" alt="Stadium Matches" loading="lazy" decoding="async">
+                        <div class="img-zoom-hint">🔍 View Full Res</div>
+                    </div>
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">Memorial Stadium Initial Matches</div>
+                        <div class="gallery-card-desc">97 candidate matches across the bowl seating, goal lines, and mountain rim.</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION B.4: 4-Point RANSAC -->
+        <section id="sec-ransac" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Deliverable B.4</div>
+                <h2 class="section-title">B.4: 4-Point RANSAC for Robust Homography &amp; Outlier Rejection</h2>
+                <div class="section-desc">Hypothesize-and-verify consensus loop to eliminate outliers and fit optimal homographies.</div>
+            </div>
+
+            <p>
+                Even with Lowe's ratio test ($r &lt; 0.7$), a fraction of correspondence matches remain incorrect (caused by repetitive architectural geometry or parallax motion). Because standard least-squares homography estimation has an effective breakdown point of 0%, even a single outlier pair can corrupt the homography matrix and cause catastrophic shearing.
+            </p>
+            <p>
+                To achieve robust alignment, we implement <strong>4-Point RANSAC</strong> (Random Sample Consensus) completely from scratch:
+            </p>
+
+            <div class="callout callout-purple">
+                <div class="callout-title">
+                    <span>⚙️</span> The 4-Point RANSAC Algorithm
+                </div>
+                <ol style="margin-left: 20px; font-size: 0.95rem; line-height: 1.7; color: var(--text-secondary);">
+                    <li><strong>Random Sampling:</strong> Randomly select 4 candidate correspondence pairs $(p_{1}^{(k)}, p_{2}^{(k)})_{k=1}^4$ without replacement.</li>
+                    <li><strong>Model Hypothesize:</strong> Compute the exact homography $H_{\text{cand}}$ mapping $p_2 \to p_1$ from the 4 pairs using the $8 \times 9$ linear system ($Ah = 0$).</li>
+                    <li><strong>Consensus Verification:</strong> Project all candidate points $P_2$ into Image 1 coordinate space ($\hat{P}_1 = H_{\text{cand}} P_2$) and compute the Euclidean reprojection error:
+                        $$\epsilon_k = ||\hat{P}_{1, k} - P_{1, k}||_2 = \sqrt{(\hat{x}_{1,k} - x_{1,k})^2 + (\hat{y}_{1,k} - y_{1,k})^2}$$
+                    </li>
+                    <li><strong>Inlier Counting:</strong> A correspondence is classified as an inlier if $\epsilon_k &lt; \text{threshold}$ (we use $\epsilon \le 3.0$ pixels).</li>
+                    <li><strong>Iteration:</strong> Repeat for $S = 4,000$ iterations and keep the homography hypothesis yielding the maximum inlier count.</li>
+                    <li><strong>Least-Squares Refinement:</strong> Recompute the final homography $H_{\text{final}}$ using <em>all</em> consensus inliers via overdetermined linear least squares.</li>
+                </ol>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">Quantitative Pipeline Statistics</h3>
+                <p>
+                    Below is the quantitative breakdown across all three datasets showing the survival rate of features from raw Harris detection to the final RANSAC consensus inlier set:
+                </p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Dataset Scene</th>
+                                <th>Raw Harris Corners (L / R)</th>
+                                <th>ANMS Keypoints</th>
+                                <th>Lowe Matches ($r &lt; 0.7$)</th>
+                                <th>RANSAC Inliers ($\epsilon \le 3$ px)</th>
+                                <th>Inlier Ratio (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Piedmont Avenue Overlook</strong></td>
+                                <td>43,413 / 44,666</td>
+                                <td>1,000 / 1,000</td>
+                                <td>88</td>
+                                <td><strong>79</strong></td>
+                                <td><span class="badge badge-green">89.8%</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Lewis Hall (Chemistry)</strong></td>
+                                <td>40,392 / 40,608</td>
+                                <td>1,000 / 1,000</td>
+                                <td>81</td>
+                                <td><strong>67</strong></td>
+                                <td><span class="badge badge-green">82.7%</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Memorial Stadium</strong></td>
+                                <td>34,884 / 35,252</td>
+                                <td>1,000 / 1,000</td>
+                                <td>97</td>
+                                <td><strong>41</strong></td>
+                                <td><span class="badge badge-amber">42.3%</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="subsection">
+                <h3 class="subsection-title">RANSAC Inliers (Green) vs. Rejected Outliers (Red)</h3>
+                <div class="grid-3">
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/LBNL_ransac_inliers.png', 'LBNL RANSAC Inliers (Green) vs Outliers (Red)')">
+                            <img src="part_b/LBNL_ransac_inliers.png" alt="LBNL Inliers vs Outliers" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Piedmont Avenue Inliers vs. Outliers</div>
+                            <div class="gallery-card-desc">79 green inliers (89.8%) locked onto stable ground points; 9 red outlier matches successfully rejected.</div>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/lewis_ransac_inliers.png', 'Lewis Hall RANSAC Inliers (Green) vs Outliers (Red)')">
+                            <img src="part_b/lewis_ransac_inliers.png" alt="Lewis Inliers vs Outliers" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Lewis Hall Inliers vs. Outliers</div>
+                            <div class="gallery-card-desc">67 green inliers (82.7%) tracking architectural lines; 14 repetitive brick mismatches pruned.</div>
+                        </div>
+                    </div>
+                    <div class="gallery-card">
+                        <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/stadium_ransac_inliers.png', 'Memorial Stadium RANSAC Inliers (Green) vs Outliers (Red)')">
+                            <img src="part_b/stadium_ransac_inliers.png" alt="Stadium Inliers vs Outliers" loading="lazy" decoding="async">
+                            <div class="img-zoom-hint">🔍 View Full Res</div>
+                        </div>
+                        <div class="gallery-card-body">
+                            <div class="gallery-card-title">Memorial Stadium Inliers vs. Outliers</div>
+                            <div class="gallery-card-desc">41 green inliers locked onto solid stadium structure; 56 repetitive seating and cloud mismatches safely discarded.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION B.5: Automatic vs. Manual Stitching -->
+        <section id="sec-comparison" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Deliverable B.5 &amp; Comparative Analysis</div>
+                <h2 class="section-title">B.5: Panorama Stitching &amp; Comparison: Manual (Part 4A) vs. Automatic (Part 4B)</h2>
+                <div class="section-desc">Side-by-side evaluation of manual correspondence stitching against fully autonomous MOPS autostitching.</div>
+            </div>
+
+            <p>
+                Below we directly compare the panoramas produced by manual point clicking (<strong>Part 4A</strong>) against the fully autonomous mosaics generated by our MOPS + RANSAC pipeline (<strong>Part 4B</strong>). Both sets of panoramas were warped using our custom bilinear inverse warp engine and feathered using 2D Euclidean distance transform alpha blending.
+            </p>
+
+            <!-- Dataset 1: LBNL -->
+            <div class="subsection">
+                <h3 class="subsection-title">Dataset 1: Piedmont Avenue Overlook</h3>
+                <div class="comparison-container">
+                    <div class="comp-tabs">
+                        <button class="comp-tab-btn active" onclick="switchMosaicTab('lbnl-cmp', 'split', this)">Side-by-Side Comparison</button>
+                        <button class="comp-tab-btn" onclick="switchMosaicTab('lbnl-cmp', 'auto', this)">Full Auto Panorama (Part B)</button>
+                        <button class="comp-tab-btn" onclick="switchMosaicTab('lbnl-cmp', 'manual', this)">Full Manual Panorama (Part A)</button>
+                    </div>
+
+                    <div id="lbnl-cmp-split" class="comp-view active">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/LBNL_manual_vs_auto.png', 'Piedmont Avenue: Part A Manual (Left) vs Part B Automatic (Right)')">
+                                <img src="part_b/LBNL_manual_vs_auto.png" alt="LBNL Manual vs Auto" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Piedmont Avenue Overlook — Part A Manual (Left) vs. Part B Automatic (Right)</div>
+                                <div class="gallery-card-desc">Left: Manual clicking (~11 points). Right: Automated MOPS + RANSAC (79 consensus inliers).</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="lbnl-cmp-auto" class="comp-view">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/LBNL_pano_auto.png', 'Piedmont Avenue Overlook: Autostitched Panorama (Part B)')">
+                                <img src="part_b/LBNL_pano_auto.png" alt="LBNL Auto Panorama" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Piedmont Avenue Overlook — Fully Autonomous Panorama (Part B)</div>
+                                <div class="gallery-card-desc">Seamless blend across tree branches and hills; zero manual interaction required.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="lbnl-cmp-manual" class="comp-view">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/LBNL_mosaic_blended.png', 'Piedmont Avenue Overlook: Manual Stitching (Part A)')">
+                                <img src="part_a/LBNL_mosaic_blended.png" alt="LBNL Manual Panorama" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Piedmont Avenue Overlook — Manual Feathered Mosaic (Part A)</div>
+                                <div class="gallery-card-desc">Manually clicked reference mosaic from Part 4A.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <p>
+                    <strong>Observations:</strong> The automated pipeline achieves higher structural consistency. While the manual alignment was excellent, human clicking exhibits slight 1-pixel jitter, leading to subtle softening in distant tree canopies. The automatic pipeline locked 79 consensus inliers across both foreground foliage and distant horizons, yielding razor-sharp continuity with zero ghosting.
+                </p>
+            </div>
+
+            <!-- Dataset 2: Lewis -->
+            <div class="subsection">
+                <h3 class="subsection-title">Dataset 2: Lewis Hall (College of Chemistry)</h3>
+                <div class="comparison-container">
+                    <div class="comp-tabs">
+                        <button class="comp-tab-btn active" onclick="switchMosaicTab('lewis-cmp', 'split', this)">Side-by-Side Comparison</button>
+                        <button class="comp-tab-btn" onclick="switchMosaicTab('lewis-cmp', 'auto', this)">Full Auto Panorama (Part B)</button>
+                        <button class="comp-tab-btn" onclick="switchMosaicTab('lewis-cmp', 'manual', this)">Full Manual Panorama (Part A)</button>
+                    </div>
+
+                    <div id="lewis-cmp-split" class="comp-view active">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/lewis_manual_vs_auto.png', 'Lewis Hall: Part A Manual (Left) vs Part B Automatic (Right)')">
+                                <img src="part_b/lewis_manual_vs_auto.png" alt="Lewis Manual vs Auto" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Lewis Hall — Part A Manual (Left) vs. Part B Automatic (Right)</div>
+                                <div class="gallery-card-desc">Left: Manual clicking (~10 points). Right: Automated MOPS + RANSAC (67 consensus inliers).</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="lewis-cmp-auto" class="comp-view">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/lewis_pano_auto.png', 'Lewis Hall: Autostitched Panorama (Part B)')">
+                                <img src="part_b/lewis_pano_auto.png" alt="Lewis Auto Panorama" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Lewis Hall — Fully Autonomous Panorama (Part B)</div>
+                                <div class="gallery-card-desc">Perfect collinearity preservation across window mullions, roof trim, and concrete seams.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="lewis-cmp-manual" class="comp-view">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/lewis_mosaic_blended.png', 'Lewis Hall: Manual Stitching (Part A)')">
+                                <img src="part_a/lewis_mosaic_blended.png" alt="Lewis Manual Panorama" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">Lewis Hall — Manual Feathered Mosaic (Part A)</div>
+                                <div class="gallery-card-desc">Manually clicked reference mosaic from Part 4A.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <p>
+                    <strong>Observations:</strong> For rigid architectural scenes like Lewis Hall, the automated homography is virtually indistinguishable from manual alignment, but was obtained in seconds without human fatigue. The 67 consensus inliers span the entire vertical height of the facade, preserving straight structural lines across the boundary seam.
+                </p>
+            </div>
+
+            <!-- Dataset 3: Stadium -->
+            <div class="subsection">
+                <h3 class="subsection-title">Dataset 3: California Memorial Stadium</h3>
+                <div class="comparison-container">
+                    <div class="comp-tabs">
+                        <button class="comp-tab-btn active" onclick="switchMosaicTab('stadium-cmp', 'split', this)">Side-by-Side Comparison</button>
+                        <button class="comp-tab-btn" onclick="switchMosaicTab('stadium-cmp', 'auto', this)">Full Auto Panorama (Part B)</button>
+                        <button class="comp-tab-btn" onclick="switchMosaicTab('stadium-cmp', 'manual', this)">Full Manual Panorama (Part A)</button>
+                    </div>
+
+                    <div id="stadium-cmp-split" class="comp-view active">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/stadium_manual_vs_auto.png', 'Memorial Stadium: Part A Manual (Left) vs Part B Automatic (Right)')">
+                                <img src="part_b/stadium_manual_vs_auto.png" alt="Stadium Manual vs Auto" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">California Memorial Stadium — Part A Manual (Left) vs. Part B Automatic (Right)</div>
+                                <div class="gallery-card-desc">Left: Manual clicking (~12 points). Right: Automated MOPS + RANSAC (41 consensus inliers).</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="stadium-cmp-auto" class="comp-view">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_b/stadium_pano_auto.png', 'Memorial Stadium: Autostitched Panorama (Part B)')">
+                                <img src="part_b/stadium_pano_auto.png" alt="Stadium Auto Panorama" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">California Memorial Stadium — Fully Autonomous Panorama (Part B)</div>
+                                <div class="gallery-card-desc">Grandstand rows, yard markers, and hill backdrop registered seamlessly.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="stadium-cmp-manual" class="comp-view">
+                        <div class="gallery-card">
+                            <div class="gallery-card-img-wrap" onclick="openLightbox('part_a/stadium_mosaic_blended.png', 'Memorial Stadium: Manual Stitching (Part A)')">
+                                <img src="part_a/stadium_mosaic_blended.png" alt="Stadium Manual Panorama" loading="lazy" decoding="async">
+                                <div class="img-zoom-hint">🔍 View Full Res</div>
+                            </div>
+                            <div class="gallery-card-body">
+                                <div class="gallery-card-title">California Memorial Stadium — Manual Feathered Mosaic (Part A)</div>
+                                <div class="gallery-card-desc">Manually clicked reference mosaic from Part 4A.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <p>
+                    <strong>Observations:</strong> The stadium dataset presented the greatest challenge due to hundreds of identical, repetitive bench rows that tricked Lowe's ratio test into generating ambiguous matches. 4-point RANSAC proved its strength here: despite a 57.7% initial outlier rate, the algorithm successfully discovered the true consensus subset of 41 structural inliers, producing a panoramic mosaic with clean bleacher rows and zero field distortion.
+                </p>
+            </div>
+        </section>
+
+        <!-- SECTION Reflections & Engineering Insights -->
+        <section id="sec-reflection" class="section-block">
+            <div class="part-header">
+                <div class="part-tag">Reflections &amp; Technical Insights</div>
+                <h2 class="section-title">Key Takeaways &amp; Engineering Learnings</h2>
+                <div class="section-desc">What was coolest, key algorithmic insights, and engineering reflections across Project 4A &amp; 4B.</div>
+            </div>
+
+            <div class="callout callout-purple">
+                <div class="callout-title">
+                    <span>🌟</span> The "Coolest" Takeaway
+                </div>
+                <p>
+                    Across both parts of this project, the most awe-inspiring experience was watching a complex multi-stage pipeline turn <strong>unstructured raw pixels into seamless panoramas completely autonomously</strong>. In Part 4A, manually clicking points revealed the magic of projective homographies and virtual camera rotations. In Part 4B, taking that same problem and watching the computer automatically identify tens of thousands of corners, distill them into an evenly spaced constellation via ANMS, extract scale-invariant normalized descriptors, reject repetitive distractors via Lowe's ratio test, and find true geometric truth with 4-point RANSAC felt like witnessing computational vision at its absolute finest.
+                </p>
+                <p style="margin-bottom: 0;">
+                    Equally striking was how <strong>robustness emerges from simple mathematical principles</strong>: distance-transform blending eliminates seam lines, standard deviation normalization eliminates lighting discrepancies, and random sample consensus turns a 50% contaminated match pool into a razor-sharp mosaic.
+                </p>
+            </div>
+
+            <div class="grid-2">
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">1. Spatial Balancing via ANMS vs. Naive Peaks (Part 4B)</div>
+                        <p style="font-size: 0.88rem; margin-top: 6px;">
+                            Selecting top corners purely by raw Harris response strength produces severe clustering in dense textures (foliage, tree leaves), causing homographies to overfit locally. ANMS enforces spatial diversity across the entire frame by ranking points based on their suppression radius to stronger neighbors, providing the well-spread geometry essential for stable homography computation.
+                        </p>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">2. Robust Consensus via 4-Point RANSAC (Part 4B)</div>
+                        <p style="font-size: 0.88rem; margin-top: 6px;">
+                            While Lowe's ratio test prunes over 90% of false matches, repetitive structures (e.g. stadium bleacher rows) still introduce outliers. Because least-squares optimization has a 0% breakdown point, RANSAC is indispensable: iteratively testing minimal 4-point sample sets reliably isolates the consensus inlier group even when over half the initial matches are invalid.
+                        </p>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">3. Sensitivity of Homographies to Collinearity (Part 4A)</div>
+                        <p style="font-size: 0.88rem; margin-top: 6px;">
+                            Clustering correspondence points or selecting points that are nearly collinear causes the normal equation matrix $A^T A$ to become ill-conditioned, yielding degenerate infinite canvases. Spreading points widely across the full extent of the overlap is critical to well-condition the linear system.
+                        </p>
+                    </div>
+                </div>
+                <div class="gallery-card">
+                    <div class="gallery-card-body">
+                        <div class="gallery-card-title">4. Necessity of Bilinear Antialiasing (Part 4A)</div>
+                        <p style="font-size: 0.88rem; margin-top: 6px;">
+                            While Nearest Neighbor interpolation is simple to code, its visual shortcomings are severe in projective warping: text characters break apart and diagonal edges staircase. Bilinear interpolation's continuous sub-pixel sampling preserves fine typographic details, making signs and architectural boundaries crisp and legible.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Accessible Modal Lightbox Dialog (Modern Web Standard) -->
+    <dialog id="lightbox-dialog" closedby="any" aria-label="Image Preview">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="modal-caption">Image Preview</span>
+                <button class="modal-close-btn" onclick="closeLightbox()" aria-label="Close dialog">&times;</button>
+            </div>
+            <img id="modal-img" src="" alt="Full Resolution Display">
+        </div>
+    </dialog>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p style="margin-bottom: 8px;">
+                <strong>CS180 / CS280A: Intro to Computer Vision &amp; Computational Photography</strong>
+            </p>
+            <p style="margin-bottom: 0;">
+                UC Berkeley · Chris Song · Fall 2024 / 2026 · <a href="../index.html" style="color: var(--accent-primary); text-decoration: none;">Return to Portfolio</a>
+            </p>
+        </div>
+    </footer>
+
+    <!-- Interactive Scripts -->
+    <script>
+        // Light / Dark Theme Toggle with LocalStorage Persistence
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const currentTheme = localStorage.getItem('cs180_theme') || 'dark';
+
+        if (currentTheme === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+            themeIcon.textContent = '🌙';
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+            themeIcon.textContent = '☀️';
+        }
+
+        themeToggleBtn.addEventListener('click', () => {
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            if (isLight) {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.setItem('cs180_theme', 'dark');
+                themeIcon.textContent = '☀️';
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+                localStorage.setItem('cs180_theme', 'light');
+                themeIcon.textContent = '🌙';
+            }
+        });
+
+        // Mosaic Tab Switcher
+        function switchMosaicTab(setName, viewType, btnElement) {
+            const container = btnElement.closest('.comparison-container');
+            container.querySelectorAll('.comp-tab-btn').forEach(b => b.classList.remove('active'));
+            btnElement.classList.add('active');
+
+            container.querySelectorAll('.comp-view').forEach(v => v.classList.remove('active'));
+            const targetView = document.getElementById(`${setName}-${viewType}`);
+            if (targetView) {
+                targetView.classList.add('active');
+            }
+        }
+
+        // Lightbox Modal Implementation
+        const lightbox = document.getElementById('lightbox-dialog');
+        const modalImg = document.getElementById('modal-img');
+        const modalCaption = document.getElementById('modal-caption');
+
+        function openLightbox(src, caption) {
+            modalImg.src = src;
+            modalCaption.textContent = caption || 'Image Preview';
+            lightbox.showModal();
+        }
+
+        function closeLightbox() {
+            lightbox.close();
+        }
+
+        // Fallback for browsers without native <dialog closedby>
+        if (!('closedBy' in HTMLDialogElement.prototype)) {
+            lightbox.addEventListener('click', (event) => {
+                if (event.target !== lightbox) return;
+                const rect = lightbox.getBoundingClientRect();
+                const isInside = (
+                    rect.top <= event.clientY &&
+                    event.clientY <= rect.top + rect.height &&
+                    rect.left <= event.clientX &&
+                    event.clientX <= rect.left + rect.width
+                );
+                if (!isInside) {
+                    lightbox.close();
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>
